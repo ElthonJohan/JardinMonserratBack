@@ -1,6 +1,12 @@
 from rest_framework import serializers
 from .models import Pago, ConceptoPago
-from core.serializers import AlumnoSerializer
+from estudiantes.models import Estudiante
+
+
+class EstudianteMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Estudiante
+        fields = ['id', 'nombres', 'apellidos']
 
 
 class ConceptoPagoSerializer(serializers.ModelSerializer):
@@ -14,7 +20,7 @@ class ConceptoPagoSerializer(serializers.ModelSerializer):
 
 
 class PagoSerializer(serializers.ModelSerializer):
-    alumno_detail = AlumnoSerializer(source='alumno', read_only=True)
+    alumno_detail = EstudianteMiniSerializer(source='alumno', read_only=True)
     concepto_detail = ConceptoPagoSerializer(source='concepto', read_only=True)
     
     class Meta:

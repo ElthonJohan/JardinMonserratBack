@@ -1,5 +1,4 @@
 from django.db import models
-from core.models import Alumno
 
 
 class ConceptoPago(models.Model):
@@ -41,7 +40,7 @@ class Pago(models.Model):
         ('Anulado', 'Anulado'),
     ]
     
-    alumno = models.ForeignKey(Alumno, on_delete=models.RESTRICT, related_name='pagos')
+    alumno = models.ForeignKey('estudiantes.Estudiante', on_delete=models.RESTRICT, related_name='pagos')
     concepto = models.ForeignKey(ConceptoPago, on_delete=models.RESTRICT, related_name='pagos')
     monto = models.DecimalField(max_digits=10, decimal_places=2)
     mes = models.IntegerField(blank=True, null=True)  # 1=Enero, 2=Febrero... (NULL si no es mensual)
@@ -78,4 +77,9 @@ class Pago(models.Model):
     
     def __str__(self):
         mes_str = f" - Mes {self.mes}" if self.mes else ""
-        return f"{self.alumno.get_full_name()} - {self.concepto.nombre} ({self.anio}){mes_str}"
+        alumno_nombre = '-'
+        if self.alumno_id:
+            nombres = getattr(self.alumno, 'nombres', '')
+            apellidos = getattr(self.alumno, 'apellidos', '')
+            alumno_nombre = f"{nombres} {apellidos}".strip() or str(self.alumno_id)
+        return f"{alumno_nombre} - {self.concepto.nombre} ({self.anio}){mes_str}"

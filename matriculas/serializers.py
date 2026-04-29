@@ -1,19 +1,24 @@
 from rest_framework import serializers
 from .models import Matricula
-from core.models import Alumno, Grado, Seccion
-from core.serializers import AlumnoSerializer, GradoSerializer, SeccionSerializer
+from estudiantes.serializers import AulaSerializer
+from estudiantes.models import Estudiante
+
+
+class EstudianteMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Estudiante
+        fields = ['id', 'nombres', 'apellidos']
 
 
 class MatriculaSerializer(serializers.ModelSerializer):
-    alumno_detail = AlumnoSerializer(source='alumno', read_only=True)
-    grado_detail = GradoSerializer(source='grado', read_only=True)
-    seccion_detail = SeccionSerializer(source='seccion', read_only=True)
+    alumno_detail = EstudianteMiniSerializer(source='alumno', read_only=True)
+    aula_detail = AulaSerializer(source='aula', read_only=True)
     
     class Meta:
         model = Matricula
         fields = [
-            'id', 'alumno', 'alumno_detail', 'grado', 'grado_detail',
-            'seccion', 'seccion_detail', 'anio', 'fecha_matricula',
+            'id', 'alumno', 'alumno_detail', 'aula', 'aula_detail',
+            'anio', 'fecha_matricula',
             'estado', 'observaciones', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'fecha_matricula', 'created_at', 'updated_at']
