@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion
 from estudiantes.models import Estudiante
 from django.utils import timezone
+from django.db.models import Sum  # Importar esto al inicio del archivo
 
 
 class EstudianteMiniSerializer(serializers.ModelSerializer):
@@ -135,7 +136,7 @@ class PagoSerializer(serializers.ModelSerializer):
     def get_monto_aplicado(self, obj):
         """Suma del monto_aplicado de todas las asignaciones"""
         total = obj.asignaciones.aggregate(
-            total=serializers.Sum('monto_aplicado')
+                    total=Sum('monto_aplicado')
         )['total'] or 0
         return float(total)
 
@@ -163,6 +164,6 @@ class CajaSerializer(serializers.ModelSerializer):
     def get_monto_total_pagos(self, obj):
         """Calcula el total de montos entregados en esta caja"""
         total = obj.pagos.aggregate(
-            total=serializers.Sum('monto_total_entregado')
+            total=Sum('monto_total_entregado')
         )['total'] or 0
         return float(total)
