@@ -19,6 +19,6 @@ class PagoViewSet(viewsets.ModelViewSet):
     serializer_class = PagoSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['alumno__dni', 'alumno__nombres', 'numero_recibo', 'estado']
+    search_fields = ['alumno__nombres', 'alumno__apellidos', 'numero_recibo', 'estado']
     ordering_fields = ['fecha_pago', 'monto', 'estado', 'anio']
     ordering = ['-fecha_pago']

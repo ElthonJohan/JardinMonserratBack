@@ -11,6 +11,10 @@ class ApoderadoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Apoderado
         fields = '__all__'
+    def validate_dni(self, value):
+        if not value.isdigit() or len(value) != 8:
+            raise serializers.ValidationError("El DNI debe contener exactamente 8 dígitos numéricos.")
+        return value
 
 
 class EstudianteSerializer(serializers.ModelSerializer):
@@ -24,11 +28,15 @@ class EstudianteSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def create(self, validated_data):
-        apoderado_data = validated_data.pop('apoderado')
-        apoderado = Apoderado.objects.create(**apoderado_data)
-        estudiante = Estudiante.objects.create(apoderado=apoderado, **validated_data)
-        return estudiante
-
+        try:
+            apoderado_data = validated_data.pop('apoderado')
+            apoderado = Apoderado.objects.create(**apoderado_data)
+            estudiante = Estudiante.objects.create(apoderado=apoderado, **validated_data)
+            print(f"Created student: {estudiante} with apoderado: {apoderado}")
+            return estudiante
+        except Exception as e:
+            print(f"Error creating student: {e}")
+            raise serializers.ValidationError("Error creating student")
     def update(self, instance, validated_data):
         apoderado_data = validated_data.pop('apoderado')
 

@@ -4,13 +4,13 @@ from .models import Matricula
 
 @admin.register(Matricula)
 class MatriculaAdmin(admin.ModelAdmin):
-    list_display = ['alumno', 'anio', 'grado', 'seccion', 'estado']
-    list_filter = ['anio', 'estado', 'grado', 'seccion', 'fecha_matricula']
-    search_fields = ['alumno__nombres', 'alumno__apellidos', 'alumno__dni']
+    list_display = ['alumno', 'anio', 'aula', 'estado']
+    list_filter = ['anio', 'estado', 'aula', 'fecha_matricula']
+    search_fields = ['alumno__nombres', 'alumno__apellidos']
     readonly_fields = ['fecha_matricula', 'created_at', 'updated_at']
     fieldsets = (
         ('Información de Matrícula', {
-            'fields': ('alumno', 'grado', 'seccion', 'anio', 'estado')
+            'fields': ('alumno', 'aula', 'anio', 'estado')
         }),
         ('Observaciones', {
             'fields': ('observaciones',),

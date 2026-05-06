@@ -10,8 +10,8 @@ class MatriculaViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
-        'alumno__nombres', 'alumno__apellidos', 'alumno__dni',
-        'grado__nombre', 'seccion__nombre', 'anio'
+        'alumno__nombres', 'alumno__apellidos',
+        'aula__nombre', 'anio'
     ]
     ordering_fields = ['anio', 'fecha_matricula', 'estado']
     ordering = ['-anio', '-fecha_matricula']

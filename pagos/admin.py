@@ -23,7 +23,7 @@ class ConceptoPagoAdmin(admin.ModelAdmin):
 class PagoAdmin(admin.ModelAdmin):
     list_display = ['alumno', 'concepto', 'monto', 'fecha_pago', 'numero_recibo', 'estado']
     list_filter = ['estado', 'metodo_pago', 'fecha_pago', 'anio', 'mes']
-    search_fields = ['alumno__dni', 'alumno__nombres', 'numero_recibo']
+    search_fields = ['alumno__nombres', 'alumno__apellidos', 'numero_recibo']
     readonly_fields = ['created_at', 'updated_at']
     fieldsets = (
         ('Información del Pago', {
