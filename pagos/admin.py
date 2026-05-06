@@ -22,7 +22,7 @@ class ConceptoPagoAdmin(admin.ModelAdmin):
 class DeudaAdmin(admin.ModelAdmin):
     list_display = ['alumno', 'concepto', 'monto_total', 'monto_pagado', 'saldo_pendiente', 'mes', 'anio', 'estado']
     list_filter = ['estado', 'anio', 'mes', 'concepto']
-    search_fields = ['alumno__nombres', 'alumno__apellidos']
+    search_fields = ['alumno__nombres', 'alumno__apellidos', 'concepto__nombre']
     readonly_fields = ['monto_pagado']
     
     def saldo_pendiente(self, obj):
