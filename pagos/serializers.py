@@ -30,13 +30,48 @@ class DeudaSerializer(serializers.ModelSerializer):
         model = Deuda
         fields = [
             'id', 'alumno', 'alumno_detail', 'concepto', 'concepto_detail',
-            'monto_total', 'monto_pagado', 'saldo_pendiente', 'mes', 'anio',
+            'detalle_adicional', 'monto_total', 'monto_pagado', 'saldo_pendiente', 'mes', 'anio',
             'fecha_vencimiento', 'estado'
         ]
         read_only_fields = ['id', 'monto_pagado']
     
     def get_saldo_pendiente(self, obj):
         return obj.saldo_pendiente
+
+    def validate(self, data):
+        concepto = data.get('concepto')
+        
+        if not concepto and self.instance:
+            concepto = self.instance.concepto
+            
+        monto_total = data.get('monto_total')
+        if monto_total is None and concepto:
+            if not self.instance or 'monto_total' in data:
+                data['monto_total'] = concepto.monto_base
+
+        if concepto and concepto.tipo == 'OTROS':
+            detalle = data.get('detalle_adicional')
+            if not detalle and (not self.instance or 'detalle_adicional' in data):
+                raise serializers.ValidationError({"detalle_adicional": "Este campo es obligatorio para cargos de tipo OTROS."})
+        
+        if concepto and concepto.tipo in ['PENSION', 'MATRICULA']:
+            alumno = data.get('alumno', self.instance.alumno if self.instance else None)
+            mes = data.get('mes', self.instance.mes if self.instance else None)
+            anio = data.get('anio', self.instance.anio if self.instance else None)
+            
+            qs = Deuda.objects.filter(
+                alumno=alumno,
+                concepto=concepto,
+                mes=mes,
+                anio=anio
+            )
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+                
+            if qs.exists():
+                raise serializers.ValidationError("Ya existe una deuda registrada para este alumno, concepto, mes y año.")
+                
+        return data
 
 
 class PagoAsignacionSerializer(serializers.ModelSerializer):

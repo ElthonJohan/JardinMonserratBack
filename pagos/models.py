@@ -2,6 +2,7 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
 from django.utils import timezone
+from decimal import Decimal
 
 class ConceptoPago(models.Model):
     TIPO_CHOICES = [
@@ -34,8 +35,9 @@ class Deuda(models.Model):
 
     alumno = models.ForeignKey('estudiantes.Estudiante', on_delete=models.CASCADE, related_name='deudas')
     concepto = models.ForeignKey(ConceptoPago, on_delete=models.RESTRICT)
+    detalle_adicional = models.CharField(max_length=255, blank=True, null=True)
     monto_total = models.DecimalField(max_digits=10, decimal_places=2)
-    monto_pagado = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    monto_pagado = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     mes = models.IntegerField(blank=True, null=True)
     anio = models.IntegerField()
     fecha_vencimiento = models.DateField()
@@ -44,7 +46,20 @@ class Deuda(models.Model):
     class Meta:
         verbose_name = 'Recibo de Cobranza'
         verbose_name_plural = 'Recibos de Cobranza'
-        unique_together = ('alumno', 'concepto', 'mes', 'anio')
+
+    def clean(self):
+        super().clean()
+        if hasattr(self, 'concepto') and self.concepto and self.concepto.tipo in ['PENSION', 'MATRICULA']:
+            qs = Deuda.objects.filter(
+                alumno=self.alumno,
+                concepto=self.concepto,
+                mes=self.mes,
+                anio=self.anio
+            )
+            if self.pk:
+                qs = qs.exclude(pk=self.pk)
+            if qs.exists():
+                raise ValidationError("Ya existe una deuda registrada para este alumno, concepto, mes y año.")
 
     @property
     def saldo_pendiente(self):
@@ -74,7 +89,7 @@ class Caja(models.Model):
     usuario = models.ForeignKey('usuarios.Usuario', on_delete=models.PROTECT) #
     fecha_apertura = models.DateTimeField(auto_now_add=True)
     fecha_cierre = models.DateTimeField(null=True, blank=True)
-    monto_inicial = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    monto_inicial = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     estado = models.CharField(max_length=10, choices=ESTADO_CAJA, default='Abierta')
 
     class Meta:

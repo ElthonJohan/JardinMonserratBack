@@ -16,10 +16,11 @@ from .serializers import (
 
 class ConceptoPagoViewSet(viewsets.ModelViewSet):
     """ViewSet para conceptos de pago"""
-    queryset = ConceptoPago.objects.filter(activo=True)
+    queryset = ConceptoPago.objects.all()
     serializer_class = ConceptoPagoSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['activo', 'tipo']
     search_fields = ['nombre', 'tipo']
     ordering_fields = ['nombre', 'monto_base', 'tipo']
     ordering = ['nombre']
