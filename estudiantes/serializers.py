@@ -15,6 +15,10 @@ class ApoderadoSerializer(serializers.ModelSerializer):
         if not value.isdigit() or len(value) != 8:
             raise serializers.ValidationError("El DNI debe contener exactamente 8 dígitos numéricos.")
         return value
+    def unique_dni(self, value):
+        if Apoderado.objects.filter(dni=value).exists():
+            raise serializers.ValidationError("El DNI ya existe.")
+        return value
 
 
 class EstudianteSerializer(serializers.ModelSerializer):
