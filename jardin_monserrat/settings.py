@@ -93,7 +93,7 @@ WSGI_APPLICATION = 'jardin_monserrat.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DB_NAME', 'JardinMonserrat'),
+        'NAME': os.getenv('DB_NAME', 'jardinmonserrat'),
         'USER': os.getenv('DB_USER', 'root'),
         'PASSWORD': os.getenv('DB_PASSWORD', 'Elthon_2026'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
