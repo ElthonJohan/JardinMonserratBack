@@ -25,6 +25,11 @@ class AulaViewSet(viewsets.ModelViewSet):
     queryset = Aula.objects.all()
     serializer_class = AulaSerializer
 
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nombre']
+    ordering_fields = ['nombre']
+    
+
 
 class ApoderadoViewSet(viewsets.ModelViewSet):
     queryset = Apoderado.objects.all()
