@@ -14,7 +14,7 @@ class Apoderado(models.Model):
     dni= models.CharField(max_length=8, default="00000000")
     telefono = models.CharField(max_length=20)
     email= models.EmailField(default="sin_email@gmail.com")
-    direccion = models.TextField()
+    direccion = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return self.nombres + " " + self.apellidos
