@@ -25,6 +25,10 @@ class Estudiante(models.Model):
     apellidos = models.CharField(max_length=100)
     fecha_nacimiento = models.DateField()
 
+    codigo_estudiante = models.CharField(max_length=20,unique=True, default="ESTU0000")
+    dni = models.CharField(max_length=8, unique=True, default="00000000")
+
+
     aula = models.ForeignKey(Aula, on_delete=models.CASCADE)
     apoderado = models.ForeignKey(Apoderado, on_delete=models.CASCADE)
 
