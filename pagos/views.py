@@ -1,6 +1,6 @@
 from rest_framework import viewsets, filters, status, serializers
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.response import Response
 from django.db import transaction
 from django.utils import timezone
@@ -18,7 +18,7 @@ class ConceptoPagoViewSet(viewsets.ModelViewSet):
     """ViewSet para conceptos de pago"""
     queryset = ConceptoPago.objects.all()
     serializer_class = ConceptoPagoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['activo', 'tipo']
     search_fields = ['nombre', 'tipo']
@@ -29,7 +29,7 @@ class ConceptoPagoViewSet(viewsets.ModelViewSet):
 class DeudaViewSet(viewsets.ModelViewSet):
     """ViewSet para deudas con filtros inteligentes por alumno y estado"""
     serializer_class = DeudaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['alumno', 'estado', 'anio']
     search_fields = ['alumno__nombres', 'alumno__apellidos', 'concepto__nombre']
@@ -60,7 +60,7 @@ class PagoViewSet(viewsets.ModelViewSet):
     """
     queryset = Pago.objects.all()
     serializer_class = PagoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['alumno', 'metodo_pago']
     search_fields = ['alumno__nombres', 'alumno__apellidos', 'numero_operacion']
@@ -165,7 +165,7 @@ class CajaViewSet(viewsets.ModelViewSet):
     """
     queryset = Caja.objects.all()
     serializer_class = CajaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['usuario', 'estado']
     ordering_fields = ['fecha_apertura', 'fecha_cierre']
