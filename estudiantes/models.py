@@ -28,7 +28,7 @@ class Estudiante(models.Model):
     dni = models.CharField(max_length=8, unique=True, null=True, blank=True)
 
     aula = models.ForeignKey(Aula, on_delete=models.CASCADE)
-    apoderado = models.ForeignKey(Apoderado, on_delete=models.CASCADE)
+    apoderado = models.ForeignKey(Apoderado, on_delete=models.CASCADE, related_name='estudiantes')
 
     def save(self, *args, **kwargs):
         # Si el código no ha sido asignado (es una creación nueva)

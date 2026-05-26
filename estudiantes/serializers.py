@@ -86,3 +86,41 @@ class EstudianteSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Este DNI ya pertenece a otro estudiante.")
         return value
     
+class EstudianteProfileSerializer(serializers.ModelSerializer):
+
+    aula_nombre = serializers.CharField(
+        source='aula.nombre',
+        read_only=True
+    )
+
+    class Meta:
+        model = Estudiante
+        fields = [
+            'id',
+            'nombres',
+            'apellidos',
+            'codigo_estudiante',
+            'dni',
+            'aula_nombre'
+        ]
+
+
+class ApoderadoProfileSerializer(serializers.ModelSerializer):
+
+    estudiantes = EstudianteProfileSerializer(
+        many=True,
+        read_only=True
+    )
+
+    class Meta:
+        model = Apoderado
+        fields = [
+            'id',
+            'nombres',
+            'apellidos',
+            'dni',
+            'email',
+            'telefono',
+            'direccion',
+            'estudiantes'
+        ]
