@@ -1,6 +1,6 @@
 from rest_framework import viewsets, filters, status, serializers
-from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.response import Response
 from django.db import transaction
 from django.utils import timezone
@@ -8,6 +8,7 @@ from django.db.models import Q, Sum, Count
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion
+from estudiantes.models import Estudiante, Apoderado
 from .serializers import (
     PagoSerializer, ConceptoPagoSerializer, DeudaSerializer,
     CajaSerializer, PagoAsignacionSerializer
@@ -18,7 +19,7 @@ class ConceptoPagoViewSet(viewsets.ModelViewSet):
     """ViewSet para conceptos de pago"""
     queryset = ConceptoPago.objects.all()
     serializer_class = ConceptoPagoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['activo', 'tipo']
     search_fields = ['nombre', 'tipo']
@@ -29,7 +30,7 @@ class ConceptoPagoViewSet(viewsets.ModelViewSet):
 class DeudaViewSet(viewsets.ModelViewSet):
     """ViewSet para deudas con filtros inteligentes por alumno y estado"""
     serializer_class = DeudaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['alumno', 'estado', 'anio']
     search_fields = ['alumno__nombres', 'alumno__apellidos', 'concepto__nombre']
@@ -60,7 +61,7 @@ class PagoViewSet(viewsets.ModelViewSet):
     """
     queryset = Pago.objects.all()
     serializer_class = PagoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['alumno', 'metodo_pago']
     search_fields = ['alumno__nombres', 'alumno__apellidos', 'numero_operacion']
@@ -165,7 +166,7 @@ class CajaViewSet(viewsets.ModelViewSet):
     """
     queryset = Caja.objects.all()
     serializer_class = CajaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['usuario', 'estado']
     ordering_fields = ['fecha_apertura', 'fecha_cierre']
@@ -328,3 +329,58 @@ class CajaViewSet(viewsets.ModelViewSet):
             'mensaje': 'Caja abierta exitosamente.',
             'caja': serializer.data
         }, status=status.HTTP_201_CREATED)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def parent_payment_dashboard(request):
+    """
+    Dashboard de pagos para el Portal de Apoderados
+    """
+    usuario = request.user
+
+    # Obtener el apoderado asociado al usuario logueado usando el nombre de campo correcto 'apoderado_rel'
+    apoderado = usuario.apoderado_rel
+
+    if not apoderado:
+        return Response({
+            "total_pendiente": 0,
+            "deudas_pendientes": [],
+            "pagos_recientes": [],
+            "mensaje": "No se encontró perfil de apoderado asociado a este usuario."
+        })
+
+    # Obtener todos los estudiantes de este apoderado
+    alumnos = Estudiante.objects.filter(apoderado=apoderado)
+
+    if not alumnos.exists():
+        return Response({
+            "total_pendiente": 0,
+            "deudas_pendientes": [],
+            "pagos_recientes": [],
+            "mensaje": "Este apoderado no tiene estudiantes registrados."
+        })
+
+    # Deudas pendientes (Pendiente o Parcial)
+    deudas_pendientes = Deuda.objects.filter(
+        alumno__in=alumnos,
+        estado__in=['Pendiente', 'Parcial']
+    ).select_related('concepto', 'alumno').order_by('fecha_vencimiento')
+    
+    # Como saldo_pendiente es probablemente una propiedad calculada, 
+    # usamos sum() de Python sobre el queryset en lugar de aggregate(Sum()).
+    total_pendiente = sum(d.saldo_pendiente for d in deudas_pendientes)
+
+    # Últimos pagos
+    pagos_recientes = Pago.objects.filter(
+        alumno__in=alumnos
+    ).order_by('-fecha_pago')[:8]
+
+    data = {
+        "total_pendiente": float(total_pendiente),
+        "deudas_pendientes": DeudaSerializer(deudas_pendientes, many=True).data,
+        "pagos_recientes": PagoSerializer(pagos_recientes, many=True).data,
+        "alumnos": [{"id": a.id, "nombre": str(a)} for a in alumnos],
+        "apoderado_nombre": f"{apoderado.nombres} {apoderado.apellidos}",
+    }
+
+    return Response(data)

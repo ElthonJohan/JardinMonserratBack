@@ -33,12 +33,16 @@ class EstudianteSerializer(serializers.ModelSerializer):
     aula_nombre = serializers.CharField(source='aula.nombre', read_only=True)
     apoderado_nombre = serializers.CharField(source='apoderado.nombres', read_only=True)
     codigo_estudiante = serializers.CharField(read_only=True)
+    generated_credentials = serializers.SerializerMethodField()
 
     apoderado = ApoderadoSerializer()
 
     class Meta:
         model = Estudiante
         fields = '__all__'
+
+    def get_generated_credentials(self, obj):
+        return getattr(obj, '_generated_credentials', None)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -86,3 +90,41 @@ class EstudianteSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Este DNI ya pertenece a otro estudiante.")
         return value
     
+class EstudianteProfileSerializer(serializers.ModelSerializer):
+
+    aula_nombre = serializers.CharField(
+        source='aula.nombre',
+        read_only=True
+    )
+
+    class Meta:
+        model = Estudiante
+        fields = [
+            'id',
+            'nombres',
+            'apellidos',
+            'codigo_estudiante',
+            'dni',
+            'aula_nombre'
+        ]
+
+
+class ApoderadoProfileSerializer(serializers.ModelSerializer):
+
+    estudiantes = EstudianteProfileSerializer(
+        many=True,
+        read_only=True
+    )
+
+    class Meta:
+        model = Apoderado
+        fields = [
+            'id',
+            'nombres',
+            'apellidos',
+            'dni',
+            'email',
+            'telefono',
+            'direccion',
+            'estudiantes'
+        ]

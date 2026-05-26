@@ -1,14 +1,13 @@
 # Tests de Integración: Abono Multinivel y Control de Caja
+#
+# Guarda este archivo como `pagos/tests_integracion.py` para ejecutar:
+#
+# ```bash
+# python manage.py test pagos.tests_integracion -v 2
+# ```
+#
+# ---
 
-Guarda este archivo como `pagos/tests_integracion.py` para ejecutar:
-
-```bash
-python manage.py test pagos.tests_integracion -v 2
-```
-
----
-
-```python
 from django.test import TestCase, TransactionTestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -402,7 +401,7 @@ class DeudaFilterAPITestCase(TestCase):
     
     def test_filtrar_por_estado(self):
         """Test: Filtrar deudas por estado"""
-        url = '/api/pagos/deudas/?estado=Pagado'
+        url = '/api/pagos/deudas/?estado=Pagado&incluir_pagadas=true'
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -411,7 +410,7 @@ class DeudaFilterAPITestCase(TestCase):
     
     def test_filtrar_por_anio(self):
         """Test: Filtrar deudas por año"""
-        url = '/api/pagos/deudas/?anio=2026'
+        url = '/api/pagos/deudas/?anio=2026&incluir_pagadas=true'
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -494,43 +493,42 @@ class PagoSearchAPITestCase(TestCase):
 # python manage.py test pagos.tests_integracion -v 2
 # o para un test específico:
 # python manage.py test pagos.tests_integracion.PagoFIFOAPITestCase.test_pago_fifo_completo -v 2
-```
 
----
-
-## Ejecutar los Tests
-
-```bash
-# Todos los tests
-python manage.py test pagos.tests_integracion -v 2
-
-# Tests específicos
-python manage.py test pagos.tests_integracion.CajaAPITestCase -v 2
-python manage.py test pagos.tests_integracion.PagoFIFOAPITestCase -v 2
-python manage.py test pagos.tests_integracion.DeudaFilterAPITestCase -v 2
-
-# Test específico
-python manage.py test pagos.tests_integracion.PagoFIFOAPITestCase.test_pago_fifo_completo -v 2
-```
-
-## Esperados:
-
-```
-test_abrir_caja ... ok
-test_mi_estado_abierta ... ok
-test_mi_estado_cerrada ... ok
-test_cerrar_caja ... ok
-test_error_sin_caja_abierta ... ok
-test_pago_fifo_completo ... ok
-test_estado_deuda_actualizado ... ok
-test_pago_parcial ... ok
-test_numero_operacion_unico ... ok
-test_atomicidad_transaccion ... ok
-test_filtrar_por_alumno ... ok
-test_filtrar_por_estado ... ok
-test_buscar_por_numero_operacion ... ok
-
-Ran 13 tests in 0.123s
-
-OK
-```
+# ---
+#
+# ## Ejecutar los Tests
+#
+# ```bash
+# # Todos los tests
+# python manage.py test pagos.tests_integracion -v 2
+#
+# # Tests específicos
+# python manage.py test pagos.tests_integracion.CajaAPITestCase -v 2
+# python manage.py test pagos.tests_integracion.PagoFIFOAPITestCase -v 2
+# python manage.py test pagos.tests_integracion.DeudaFilterAPITestCase -v 2
+#
+# # Test específico
+# python manage.py test pagos.tests_integracion.PagoFIFOAPITestCase.test_pago_fifo_completo -v 2
+# ```
+#
+# ## Esperados:
+#
+# ```
+# test_abrir_caja ... ok
+# test_mi_estado_abierta ... ok
+# test_mi_estado_cerrada ... ok
+# test_cerrar_caja ... ok
+# test_error_sin_caja_abierta ... ok
+# test_pago_fifo_completo ... ok
+# test_estado_deuda_actualizado ... ok
+# test_pago_parcial ... ok
+# test_numero_operacion_unico ... ok
+# test_atomicidad_transaccion ... ok
+# test_filtrar_por_alumno ... ok
+# test_filtrar_por_estado ... ok
+# test_buscar_por_numero_operacion ... ok
+#
+# Ran 13 tests in 0.123s
+#
+# OK
+# ```

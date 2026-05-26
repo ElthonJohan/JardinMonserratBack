@@ -2,14 +2,16 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 
 class Usuario(AbstractUser):
-    ROLE_CHOICES = (
-        ('admin', 'Administrador'),
-        ('secretaria', 'Secretaria'),
-        ('contador', 'Contador'),
-        ('directora', 'Directora'),
+    apoderado_rel = models.ForeignKey(
+        'estudiantes.Apoderado',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='usuarios'
     )
 
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
-
+    is_parent = models.BooleanField(default=False, verbose_name="Es Apoderado")
+    first_login = models.BooleanField(default=True, verbose_name="Primer inicio de sesión")
+    
     def __str__(self):
-        return f"{self.username} - {self.role}"
+        return f"{self.username}"
