@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    PagoViewSet, ConceptoPagoViewSet, DeudaViewSet, CajaViewSet
+    PagoViewSet, ConceptoPagoViewSet, DeudaViewSet, CajaViewSet, parent_payment_dashboard
 )
 
 router = DefaultRouter()
@@ -12,4 +12,5 @@ router.register(r'cajas', CajaViewSet, basename='caja')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('parent/pagos/', parent_payment_dashboard, name='parent-payment-dashboard'),
 ]
