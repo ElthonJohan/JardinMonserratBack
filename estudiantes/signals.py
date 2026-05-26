@@ -58,4 +58,10 @@ def create_parent_user(sender, instance, created, **kwargs):
     print(f"ID Usuario    : {usuario.id}")
     print("="*60 + "\n")
 
+    # Guardar credenciales en la instancia para que el serializador pueda acceder a ellas
+    instance._generated_credentials = {
+        "username": username,
+        "password": temp_password,
+    }
+
     # Aquí puedes agregar lógica para enviar por email o WhatsApp más adelante
