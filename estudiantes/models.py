@@ -27,7 +27,7 @@ class Estudiante(models.Model):
     codigo_estudiante = models.CharField(max_length=20, unique=True, null=True, blank=True)
     dni = models.CharField(max_length=8, unique=True, null=True, blank=True)
 
-    aula = models.ForeignKey(Aula, on_delete=models.CASCADE)
+    aula = models.ForeignKey(Aula, on_delete=models.CASCADE, null=True)
     apoderado = models.ForeignKey(Apoderado, on_delete=models.CASCADE, related_name='estudiantes')
 
     def save(self, *args, **kwargs):
