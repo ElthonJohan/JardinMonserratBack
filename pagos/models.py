@@ -34,6 +34,7 @@ class Deuda(models.Model):
     ]
 
     alumno = models.ForeignKey('estudiantes.Estudiante', on_delete=models.CASCADE, related_name='deudas')
+    periodo_academico = models.ForeignKey('matriculas.PeriodoAcademico', on_delete=models.CASCADE, related_name='deudas', null=True, blank=True)
     concepto = models.ForeignKey(ConceptoPago, on_delete=models.RESTRICT)
     detalle_adicional = models.CharField(max_length=255, blank=True, null=True)
     monto_total = models.DecimalField(max_digits=10, decimal_places=2)
