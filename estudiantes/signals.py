@@ -28,8 +28,8 @@ def create_parent_user(sender, instance, created, **kwargs):
         username = f"{base_username}_{counter}"
         counter += 1
 
-        # Generar contraseña temporal de 8 caracteres
-        temp_password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    # Generar contraseña temporal de 8 caracteres
+    temp_password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
 
     # Crear el usuario
     usuario = Usuario.objects.create(

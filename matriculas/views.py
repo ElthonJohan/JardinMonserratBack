@@ -11,7 +11,7 @@ class MatriculaViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         'alumno__nombres', 'alumno__apellidos',
-        'aula__nombre', 'periodo_academico__anio'
+        'aula__nombre','periodo_academico__nombre', 'periodo_academico__anio'
     ]
     ordering_fields = ['periodo_academico__anio', 'fecha_matricula', 'estado']
     ordering = ['-periodo_academico__anio', '-fecha_matricula']
