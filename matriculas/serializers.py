@@ -15,6 +15,7 @@ class PeriodoAcademicoSerializer(serializers.ModelSerializer):
         fields = ['id', 'nombre', 'anio', 'fecha_inicio', 'fecha_fin', 'activo']
         read_only_fields = ['id']
 
+    
 class MatriculaSerializer(serializers.ModelSerializer):
     alumno_detail = EstudianteMiniSerializer(source='alumno', read_only=True)
     aula_detail = AulaSerializer(source='aula', read_only=True)
@@ -46,11 +47,13 @@ class MatriculaSerializer(serializers.ModelSerializer):
             )
 
         return data
-
+    
     def validate_periodo_academico(self, value):
         if not value.activo:
             raise serializers.ValidationError(
                 "El período académico está cerrado."
             )
         return value
+
+    
 
