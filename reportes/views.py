@@ -24,8 +24,8 @@ class DashboardStatsAPIView(APIView):
             anio_filtro = hoy.year
 
         # --- 1. KPIs Generales ---
-        total_alumnos_activos = Matricula.objects.filter(estado='Activa', anio=anio_filtro).values('alumno').distinct().count()
-        matriculas_anio = Matricula.objects.filter(anio=anio_filtro).count()
+        total_alumnos_activos = Matricula.objects.filter(estado='Activa', periodo_academico__anio=anio_filtro).values('alumno').distinct().count()
+        matriculas_anio = Matricula.objects.filter(periodo_academico__anio=anio_filtro).count()
 
         deudas_pendientes = Deuda.objects.filter(estado__in=['Pendiente', 'Parcial'])
         pagos_pendientes_cantidad = deudas_pendientes.count()
@@ -50,7 +50,7 @@ class DashboardStatsAPIView(APIView):
         ).aggregate(total=Sum('monto_total_entregado'))['total'] or 0.0
 
         # --- 3. Distribución por Aulas (Año Seleccionado) ---
-        distribucion_aulas = Matricula.objects.filter(anio=anio_filtro, estado='Activa').values(
+        distribucion_aulas = Matricula.objects.filter(periodo_academico__anio=anio_filtro, estado='Activa').values(
             nombre_aula=F('aula__nombre'),
             capacidad=F('aula__capacidad')
         ).annotate(
@@ -58,7 +58,7 @@ class DashboardStatsAPIView(APIView):
         ).order_by('-total')
 
         # --- 4. Estado de Matrículas (Desglose) ---
-        estado_matriculas = Matricula.objects.filter(anio=anio_filtro).values('estado').annotate(
+        estado_matriculas = Matricula.objects.filter(periodo_academico__anio=anio_filtro).values('estado').annotate(
             total=Count('id')
         )
 
