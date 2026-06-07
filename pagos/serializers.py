@@ -96,11 +96,18 @@ class PagoAsignacionSerializer(serializers.ModelSerializer):
         }
 
 
+class BancoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Banco
+        fields = ['id', 'nombre', 'numero_cuenta', 'cci', 'activo']
+
+
 class PagoSerializer(serializers.ModelSerializer):
     """Serializer para pagos (cabecera) con validaciones de seguridad"""
     alumno_detail = EstudianteMiniSerializer(source='alumno', read_only=True)
     usuario_detail = serializers.SerializerMethodField()
     asignaciones = PagoAsignacionSerializer(many=True, read_only=True)
+    banco_detail = BancoSerializer(source='banco', read_only=True)
     monto_aplicado = serializers.SerializerMethodField()
     
     class Meta:
@@ -109,7 +116,7 @@ class PagoSerializer(serializers.ModelSerializer):
             'id', 'alumno', 'alumno_detail', 'caja', 'monto_total_entregado',
             'monto_aplicado', 'fecha_pago', 'metodo_pago', 'numero_operacion', 
             'comprobante_img', 'usuario_creador', 'usuario_validador', 'usuario_detail', 'observaciones', 
-            'asignaciones', 'banco', 'estado', 'fecha_aprobacion', 'motivo_rechazo'
+            'asignaciones', 'banco', 'banco_detail', 'estado', 'fecha_aprobacion', 'motivo_rechazo'
         ]
         read_only_fields = ['id', 'fecha_pago', 'usuario_creador', 'usuario_validador', 'asignaciones', 'monto_aplicado']
     
@@ -216,8 +223,3 @@ class CajaSerializer(serializers.ModelSerializer):
             total=Sum('monto_total_entregado')
         )['total'] or 0
         return float(total)
-
-class BancoSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Banco
-        fields = ['id', 'nombre', 'numero_cuenta', 'cci', 'activo']
