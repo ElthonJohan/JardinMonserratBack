@@ -3,7 +3,7 @@ from django.urls import path
 from .views import (EstudianteViewSet,
  AulaViewSet,
   ApoderadoViewSet,
-  ParentProfileView)
+  ParentProfileView, RegistroAlumnoView)
 
 router = DefaultRouter()
 router.register(r'estudiantes', EstudianteViewSet)
@@ -18,4 +18,9 @@ urlpatterns = router.urls + [
         ParentProfileView.as_view(),
         name='parent-profile'
     ),
+    path(
+    'registro-alumno/',
+    RegistroAlumnoView.as_view(),
+    name='registro-alumno'
+)
 ]

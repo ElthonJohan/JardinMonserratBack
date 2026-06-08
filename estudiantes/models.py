@@ -20,6 +20,7 @@ class Apoderado(models.Model):
         return self.nombres + " " + self.apellidos
 
 
+
 class Estudiante(models.Model):
     nombres = models.CharField(max_length=100)
     apellidos = models.CharField(max_length=100)
@@ -28,16 +29,7 @@ class Estudiante(models.Model):
     dni = models.CharField(max_length=8, unique=True, null=True, blank=True)
 
     aula = models.ForeignKey(Aula, on_delete=models.CASCADE, null=True)
-    # Un apoderado puede tener muchos estudiantes. Permitir null y usar SET_NULL
-    # para no eliminar estudiantes si se borra el apoderado.
-    apoderado = models.ForeignKey(
-        Apoderado,
-        on_delete=models.SET_NULL,
-        related_name='estudiantes',
-        null=True,
-        blank=True,
-        db_index=True,
-    )
+    
 
     def save(self, *args, **kwargs):
         # Si el código no ha sido asignado (es una creación nueva)
@@ -56,3 +48,48 @@ class Estudiante(models.Model):
 
     def __str__(self):
         return f"{self.nombres} {self.apellidos}"
+    
+
+class ApoderadoEstudiante(models.Model):
+
+    TIPO_RELACION = [
+        ('PADRE', 'Padre'),
+        ('MADRE', 'Madre'),
+        ('TUTOR', 'Tutor'),
+        ('ABUELO', 'Abuelo'),
+        ('OTRO', 'Otro'),
+    ]
+
+    apoderado = models.ForeignKey(
+        Apoderado,
+        on_delete=models.CASCADE,
+        related_name='hijos'
+    )
+
+    estudiante = models.ForeignKey(
+        Estudiante,
+        on_delete=models.CASCADE,
+        related_name='apoderados'
+    )
+
+    tipo_relacion = models.CharField(
+        max_length=20,
+        choices=TIPO_RELACION
+    )
+
+    es_principal = models.BooleanField(default=False)
+
+    fecha_registro = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = (
+            'apoderado',
+            'estudiante'
+        )
+
+    def __str__(self):
+        return (
+            f"{self.apoderado} - "
+            f"{self.estudiante} "
+            f"({self.tipo_relacion})"
+        )
