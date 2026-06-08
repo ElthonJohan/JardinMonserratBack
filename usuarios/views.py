@@ -22,29 +22,26 @@ class PermisoViewSet(viewsets.ViewSet):
     
     def list(self, request):
         excluded_apps = ['admin', 'auth', 'contenttypes', 'sessions']
-        content_types = ContentType.objects.exclude(app_label__in=excluded_apps)
         
-        result = []
-        for ct in content_types:
-            perms = Permission.objects.filter(content_type=ct)
-            if not perms.exists():
-                continue
+        # Traer TODOS los permisos y hacer un JOIN con content_type en UNA sola consulta
+        permisos_db = Permission.objects.select_related('content_type').exclude(
+            content_type__app_label__in=excluded_apps
+        )
+        
+        # Agrupar en memoria (O(N) tiempo, 1 sola consulta)
+        modulos_dict = {}
+        for p in permisos_db:
+            modulo_name = p.content_type.model.capitalize()
+            if modulo_name not in modulos_dict:
+                modulos_dict[modulo_name] = {}
                 
-            modulo_name = ct.model.capitalize()
+            action = p.codename.split('_')[0]
+            modulos_dict[modulo_name][action] = {
+                "id": p.id,
+                "codename": p.codename
+            }
             
-            permisos_dict = {}
-            for p in perms:
-                action = p.codename.split('_')[0]
-                permisos_dict[action] = {
-                    "id": p.id,
-                    "codename": p.codename
-                }
-                
-            result.append({
-                "modulo": modulo_name,
-                "permisos": permisos_dict
-            })
-            
+        result = [{"modulo": k, "permisos": v} for k, v in modulos_dict.items()]
         return Response(result)
 
 class RoleViewSet(viewsets.ModelViewSet):

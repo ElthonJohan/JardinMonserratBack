@@ -7,11 +7,11 @@ from django.utils import timezone
 from django.db.models import Q, Sum, Count
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion
+from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion, Banco
 from estudiantes.models import Estudiante, Apoderado
 from .serializers import (
     PagoSerializer, ConceptoPagoSerializer, DeudaSerializer,
-    CajaSerializer, PagoAsignacionSerializer
+    CajaSerializer, PagoAsignacionSerializer, PagoManualSerializer, BancoSerializer
 )
 
 
@@ -34,8 +34,8 @@ class DeudaViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['alumno', 'estado', 'anio']
     search_fields = ['alumno__nombres', 'alumno__apellidos', 'concepto__nombre']
-    ordering_fields = ['fecha_vencimiento', 'monto_total', 'estado', 'anio']
-    ordering = ['fecha_vencimiento']
+    ordering_fields = ['fecha_vencimiento', 'monto_total', 'estado', 'anio', 'id']
+    ordering = ['id']
     
     def get_queryset(self):
         """
@@ -68,37 +68,168 @@ class PagoViewSet(viewsets.ModelViewSet):
     ordering_fields = ['fecha_pago', 'monto_total_entregado']
     ordering = ['-fecha_pago']
     
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return PagoManualSerializer
+        return PagoSerializer
+
     def perform_create(self, serializer):
         """
-        Lógica de creación de Pago con abono FIFO:
-        1. Valida que el usuario tenga una Caja abierta
-        2. Reparte el monto entre las deudas pendientes (FIFO por fecha_vencimiento)
-        3. Crea PagoAsignacion para cada deuda afectada
+        Lógica de creación de Pago con asignación manual.
+        - Si es un apoderado: Estado REGISTRADO, sin caja. Los saldos no se actualizan.
+        - Si es administración: Estado APROBADO, asigna caja y validador. Los saldos se actualizan inmediatamente.
         """
-        # Validar que el usuario tenga una Caja abierta
-        caja_abierta = Caja.objects.filter(
-            usuario=self.request.user,
-            estado='Abierta'
-        ).first()
-        
-        if not caja_abierta:
-            raise serializers.ValidationError(
-                {"detail": "No tienes una Caja abierta. Abre una caja antes de registrar pagos."}
-            )
-        
         try:
             with transaction.atomic():
-                # Guardar el pago con el usuario y la caja
-                pago = serializer.save(
-                    usuario_registro=self.request.user,
-                    caja=caja_abierta
-                )
+                # Extraemos el detalle de pagos validado por el serializer
+                detalles_pago = serializer.validated_data.pop('detalles_pago', [])
                 
-                # Aplicar la lógica FIFO de abono multinivel
-                self._aplicar_abono_fifo(pago)
-        
+                # Determinamos si el usuario es apoderado
+                es_apoderado = hasattr(self.request.user, 'apoderado_rel') and self.request.user.apoderado_rel is not None
+                
+                if es_apoderado:
+                    # Lógica para apoderados desde su casa
+                    pago = serializer.save(
+                        usuario_creador=self.request.user,
+                        estado='REGISTRADO',
+                        caja=None
+                    )
+                else:
+                    # Lógica para administración (cajero, admin, etc)
+                    caja_form = serializer.validated_data.get('caja')
+                    pago = serializer.save(
+                        usuario_creador=self.request.user,
+                        estado='APROBADO',
+                        caja=caja_form,
+                        fecha_aprobacion=timezone.now(),
+                        usuario_validador=self.request.user
+                    )
+                
+                # Crear las asignaciones manualmente
+                asignaciones = []
+                for detalle in detalles_pago:
+                    asignaciones.append(
+                        PagoAsignacion(
+                            pago=pago,
+                            deuda_id=detalle['deuda_id'],
+                            monto_aplicado=detalle['monto_asignado']
+                        )
+                    )
+                
+                # Guardar las asignaciones en bloque
+                PagoAsignacion.objects.bulk_create(asignaciones)
+                
+                # Si el pago ya nace APROBADO, debemos actualizar los saldos inmediatamente
+                if pago.estado == 'APROBADO':
+                    # Recuperar las asignaciones desde la DB para tener la instancia de deuda correcta
+                    for asignacion in pago.asignaciones.all():
+                        asignacion.deuda.actualizar_estado()
+                
         except Exception as e:
             raise serializers.ValidationError({"detail": str(e)})
+            
+    @action(detail=False, methods=['get'])
+    def pendientes_aprobacion(self, request):
+        """Lista pagos en estado REGISTRADO"""
+        pagos = self.get_queryset().filter(estado='REGISTRADO')
+        page = self.paginate_queryset(pagos)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(pagos, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def pendientes_count(self, request):
+        """Devuelve la cantidad de pagos pendientes (REGISTRADO)"""
+        count = self.get_queryset().filter(estado='REGISTRADO').count()
+        return Response({"count": count})
+            
+    @action(detail=True, methods=['post'])
+    def procesar_aprobacion(self, request, pk=None):
+        """
+        Procesa la aprobación o rechazo de un pago manual.
+        Recibe JSON con: estado ('APROBADO', 'RECHAZADO'), caja_id (opcional), motivo_rechazo (opcional)
+        """
+        pago = self.get_object()
+        estado_nuevo = request.data.get('estado')
+        caja_id = request.data.get('caja_id')
+        motivo_rechazo = request.data.get('motivo_rechazo')
+
+        if pago.estado != 'REGISTRADO':
+            return Response(
+                {"detail": f"El pago no puede ser procesado porque su estado actual es {pago.estado}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if estado_nuevo not in ['APROBADO', 'RECHAZADO']:
+            return Response(
+                {"detail": "Estado inválido. Debe ser APROBADO o RECHAZADO."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            with transaction.atomic():
+                from notificaciones.models import Notificacion
+                
+                if estado_nuevo == 'RECHAZADO':
+                    if not motivo_rechazo:
+                        return Response(
+                            {"detail": "El motivo de rechazo es obligatorio."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    pago.estado = 'RECHAZADO'
+                    pago.motivo_rechazo = motivo_rechazo
+                    pago.usuario_validador = request.user
+                    pago.save()
+                    
+                    if pago.usuario_creador:
+                        Notificacion.objects.create(
+                            usuario=pago.usuario_creador,
+                            alumno=pago.alumno,
+                            titulo="Pago Rechazado",
+                            mensaje=f"Tu pago por S/{pago.monto_total_entregado} ha sido rechazado. Motivo: {motivo_rechazo}",
+                            tipo='PAGO_RECHAZADO'
+                        )
+
+                elif estado_nuevo == 'APROBADO':
+                    if not caja_id:
+                        return Response(
+                            {"detail": "Debe especificar una caja_id para aprobar el pago."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                        
+                    caja = Caja.objects.filter(id=caja_id, estado='Abierta').first()
+                    if not caja:
+                        return Response(
+                            {"detail": "La caja especificada no existe o no está abierta."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                        
+                    pago.estado = 'APROBADO'
+                    pago.caja = caja
+                    pago.fecha_aprobacion = timezone.now()
+                    pago.usuario_validador = request.user
+                    pago.save()
+                    
+                    # Actualizar saldo de cada deuda afectada
+                    for asignacion in pago.asignaciones.all():
+                        asignacion.deuda.actualizar_estado()
+                        
+                    if pago.usuario_creador:
+                        Notificacion.objects.create(
+                            usuario=pago.usuario_creador,
+                            alumno=pago.alumno,
+                            titulo="Pago Aprobado",
+                            mensaje=f"Tu pago por S/{pago.monto_total_entregado} ha sido aprobado exitosamente.",
+                            tipo='PAGO_APROBADO'
+                        )
+
+            return Response({"detail": f"Pago {estado_nuevo.lower()} exitosamente."}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def _aplicar_abono_fifo(self, pago):
         """
@@ -112,11 +243,11 @@ class PagoViewSet(viewsets.ModelViewSet):
         monto_disponible = pago.monto_total_entregado
         asignaciones_creadas = 0
         
-        # Obtener deudas pendientes/parciales del alumno, ordenadas por fecha_vencimiento (ASC)
+        # Obtener deudas pendientes/parciales del alumno, ordenadas por ID (orden de creación: Cuota -> Matrícula -> Pensiones)
         deudas_pendientes = Deuda.objects.filter(
             alumno=pago.alumno,
             estado__in=['Pendiente', 'Parcial']
-        ).order_by('fecha_vencimiento')
+        ).order_by('id')
         
         for deuda in deudas_pendientes:
             if monto_disponible <= 0:
@@ -364,7 +495,7 @@ def parent_payment_dashboard(request):
     deudas_pendientes = Deuda.objects.filter(
         alumno__in=alumnos,
         estado__in=['Pendiente', 'Parcial']
-    ).select_related('concepto', 'alumno').order_by('fecha_vencimiento')
+    ).select_related('concepto', 'alumno').order_by('id')
     
     # Como saldo_pendiente es probablemente una propiedad calculada, 
     # usamos sum() de Python sobre el queryset en lugar de aggregate(Sum()).
@@ -384,3 +515,17 @@ def parent_payment_dashboard(request):
     }
 
     return Response(data)
+
+class BancoViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar bancos (CRUD).
+    """
+    queryset = Banco.objects.all()
+    serializer_class = BancoSerializer
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['activo']
+    search_fields = ['nombre', 'numero_cuenta', 'cci']
+    ordering_fields = ['nombre', 'activo']
+    ordering = ['nombre']
+    pagination_class = None

@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'matriculas',
     'pagos.apps.PagosConfig',
     'reportes',
+    'notificaciones',
 ]
 
 MIDDLEWARE = [
