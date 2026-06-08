@@ -110,17 +110,22 @@ class ApoderadoEstudianteSerializer(
         model = ApoderadoEstudiante
         fields = '__all__'
         
-class HijoSerializer(
-    serializers.ModelSerializer
-):
+class HijoSerializer(serializers.ModelSerializer):
+
+    nombre_completo = serializers.SerializerMethodField()
+
     class Meta:
         model = Estudiante
+
         fields = [
             'id',
-            'nombres',
-            'apellidos',
             'codigo_estudiante',
+            'dni',
+            'nombre_completo'
         ]
+
+    def get_nombre_completo(self, obj):
+        return f"{obj.nombres} {obj.apellidos}"
 
 class ApoderadoProfileSerializer(
     serializers.ModelSerializer
@@ -130,6 +135,7 @@ class ApoderadoProfileSerializer(
 
     class Meta:
         model = Apoderado
+
         fields = [
             'id',
             'nombres',
@@ -149,12 +155,120 @@ class ApoderadoProfileSerializer(
             .filter(apoderado=obj)
         )
 
-        return HijoSerializer(
-            [r.estudiante for r in relaciones],
-            many=True
-        ).data
-    
+        return [
+            {
+                "id": r.estudiante.id,
+                "codigo_estudiante":
+                    r.estudiante.codigo_estudiante,
 
+                "nombre":
+                    f"{r.estudiante.nombres} "
+                    f"{r.estudiante.apellidos}",
+
+                "tipo_relacion":
+                    r.tipo_relacion,
+
+                "es_principal":
+                    r.es_principal
+            }
+            for r in relaciones
+        ]
+
+class AgregarApoderadoSerializer(serializers.Serializer):
+
+    dni = serializers.CharField(max_length=8)
+
+    nombres = serializers.CharField(
+        max_length=100,
+        required=False
+    )
+
+    apellidos = serializers.CharField(
+        max_length=100,
+        required=False
+    )
+
+    telefono = serializers.CharField(
+        max_length=20,
+        required=False
+    )
+
+    email = serializers.EmailField(
+        required=False
+    )
+
+    direccion = serializers.CharField(
+        required=False,
+        allow_blank=True
+    )
+
+    tipo_relacion = serializers.ChoiceField(
+        choices=[
+            'PADRE',
+            'MADRE',
+            'TUTOR',
+            'ABUELO',
+            'OTRO'
+        ]
+    )
+
+    es_principal = serializers.BooleanField(
+        default=False
+    ) 
+
+class ApoderadoEstudianteDetalleSerializer(
+    serializers.ModelSerializer
+):
+
+    relacion_id = serializers.IntegerField(
+        source='id',
+        read_only=True
+    )
+
+    apoderado_id = serializers.IntegerField(
+        source='apoderado.id'
+    )
+
+    nombres = serializers.CharField(
+        source='apoderado.nombres'
+    )
+
+    apellidos = serializers.CharField(
+        source='apoderado.apellidos'
+    )
+
+    dni = serializers.CharField(
+        source='apoderado.dni'
+    )
+
+    telefono = serializers.CharField(
+        source='apoderado.telefono'
+    )
+
+    email = serializers.CharField(
+        source='apoderado.email'
+    )
+
+    direccion = serializers.CharField(
+        source='apoderado.direccion'
+    )
+
+    class Meta:
+        model = ApoderadoEstudiante
+
+        fields = [
+            'relacion_id',
+            'apoderado_id',
+            'nombres',
+            'apellidos',
+            'dni',
+            'telefono',
+            'email',
+            'direccion',
+            'tipo_relacion',
+            'es_principal'
+        ]
+        
 class RegistroAlumnoSerializer(serializers.Serializer):
 
     estudiante = serializers.DictField()

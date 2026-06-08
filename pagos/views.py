@@ -460,61 +460,109 @@ class CajaViewSet(viewsets.ModelViewSet):
             'mensaje': 'Caja abierta exitosamente.',
             'caja': serializer.data
         }, status=status.HTTP_201_CREATED)
-
+        
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def parent_payment_dashboard(request):
-    """
-    Dashboard de pagos para el Portal de Apoderados
-    """
+
     usuario = request.user
 
-    # Obtener el apoderado asociado al usuario logueado usando el nombre de campo correcto 'apoderado_rel'
     apoderado = usuario.apoderado_rel
 
     if not apoderado:
+
         return Response({
             "total_pendiente": 0,
-            "deudas_pendientes": [],
-            "pagos_recientes": [],
-            "mensaje": "No se encontró perfil de apoderado asociado a este usuario."
+            "alumnos": []
         })
 
-    # Obtener todos los estudiantes de este apoderado
-    alumnos = Estudiante.objects.filter(apoderado=apoderado)
+    alumnos = Estudiante.objects.filter(
+        apoderados__apoderado=apoderado
+    ).distinct()
 
-    if not alumnos.exists():
-        return Response({
-            "total_pendiente": 0,
-            "deudas_pendientes": [],
-            "pagos_recientes": [],
-            "mensaje": "Este apoderado no tiene estudiantes registrados."
+    alumnos_data = []
+
+    total_familiar = 0
+
+    for alumno in alumnos:
+
+        deudas = (
+            Deuda.objects
+            .filter(
+                alumno=alumno,
+                estado__in=[
+                    'Pendiente',
+                    'Parcial'
+                ]
+            )
+            .select_related(
+                'concepto'
+            )
+            .order_by(
+                'fecha_vencimiento'
+            )
+        )
+
+        pagos = (
+            Pago.objects
+            .filter(
+                alumno=alumno
+            )
+            .order_by(
+                '-fecha_pago'
+            )[:5]
+        )
+
+        total_alumno = sum(
+            d.saldo_pendiente
+            for d in deudas
+        )
+
+        total_familiar += total_alumno
+
+        alumnos_data.append({
+
+            "id":
+                alumno.id,
+
+            "codigo":
+                alumno.codigo_estudiante,
+
+            "nombre":
+                f"{alumno.nombres} "
+                f"{alumno.apellidos}",
+
+            "total_pendiente":
+                float(total_alumno),
+
+            "deudas":
+                DeudaSerializer(
+                    deudas,
+                    many=True
+                ).data,
+
+            "pagos_recientes":
+                PagoSerializer(
+                    pagos,
+                    many=True
+                ).data
         })
 
-    # Deudas pendientes (Pendiente o Parcial)
-    deudas_pendientes = Deuda.objects.filter(
-        alumno__in=alumnos,
-        estado__in=['Pendiente', 'Parcial']
-    ).select_related('concepto', 'alumno').order_by('id')
-    
-    # Como saldo_pendiente es probablemente una propiedad calculada, 
-    # usamos sum() de Python sobre el queryset en lugar de aggregate(Sum()).
-    total_pendiente = sum(d.saldo_pendiente for d in deudas_pendientes)
+    return Response({
 
-    # Últimos pagos
-    pagos_recientes = Pago.objects.filter(
-        alumno__in=alumnos
-    ).order_by('-fecha_pago')[:8]
+        "apoderado_nombre":
+            f"{apoderado.nombres} "
+            f"{apoderado.apellidos}",
 
-    data = {
-        "total_pendiente": float(total_pendiente),
-        "deudas_pendientes": DeudaSerializer(deudas_pendientes, many=True).data,
-        "pagos_recientes": PagoSerializer(pagos_recientes, many=True).data,
-        "alumnos": [{"id": a.id, "nombre": str(a)} for a in alumnos],
-        "apoderado_nombre": f"{apoderado.nombres} {apoderado.apellidos}",
-    }
+        "cantidad_hijos":
+            alumnos.count(),
 
-    return Response(data)
+        "total_pendiente":
+            float(total_familiar),
+
+        "alumnos":
+            alumnos_data
+    })
 
 class BancoViewSet(viewsets.ModelViewSet):
     """
