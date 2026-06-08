@@ -9,7 +9,9 @@ from .models import ApoderadoEstudiante, Estudiante, Aula, Apoderado
 from .serializers import EstudianteSerializer, AulaSerializer, ApoderadoSerializer
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
-
+from usuarios.models import Usuario
+import random
+import string
 class EstudianteViewSet(viewsets.ModelViewSet):
     queryset = Estudiante.objects.all()
     serializer_class = EstudianteSerializer
@@ -19,7 +21,7 @@ class EstudianteViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     
     # Filtros exactos (Ej: ?fecha_nacimiento=2020-01-01)
-    filterset_fields = ['fecha_nacimiento', 'aula']
+    filterset_fields = ['fecha_nacimiento']
     
     # Campos para búsqueda general (Ej: ?search=Juan o ?search=77665544)
     # Usamos '__' para buscar en campos del modelo relacionado (Apoderado)
@@ -28,16 +30,6 @@ class EstudianteViewSet(viewsets.ModelViewSet):
     # Campos permitidos para ordenar (Ej: ?ordering=-fecha_nacimiento)
     ordering_fields = ['nombres', 'apellidos', 'fecha_nacimiento']
 
-
-class AulaViewSet(viewsets.ModelViewSet):
-    queryset = Aula.objects.all()
-    serializer_class = AulaSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
-
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['nombre']
-    ordering_fields = ['nombre']
-    
 
 
 class ApoderadoViewSet(viewsets.ModelViewSet):
@@ -98,6 +90,7 @@ class ParentProfileView(APIView):
         return Response(serializer.data)
     
 
+
 class RegistroAlumnoView(APIView):
 
     @transaction.atomic
@@ -116,22 +109,77 @@ class RegistroAlumnoView(APIView):
         estudiante_data = data['estudiante']
         apoderado_data = data['apoderado']
 
-        # 👇 AQUÍ VA ESTE CÓDIGO
-        apoderado = Apoderado.objects.filter(dni=apoderado_data["dni"]).first()
+        # =====================================================
+        # BUSCAR O CREAR APODERADO
+        # =====================================================
 
+        apoderado = Apoderado.objects.filter(
+    dni=apoderado_data['dni']
+).first()
+        
         if not apoderado:
+
+            datos_nuevo = apoderado_data.copy()
+            datos_nuevo.pop('id', None)
+
             apoderado = Apoderado.objects.create(
-                **apoderado_data
+                **datos_nuevo
             )
+        # Si existe, actualizar sus datos
+        if apoderado:
+
+            apoderado.nombres = apoderado_data.get(
+                'nombres',
+                apoderado.nombres
+            )
+
+            apoderado.apellidos = apoderado_data.get(
+                'apellidos',
+                apoderado.apellidos
+            )
+
+            apoderado.telefono = apoderado_data.get(
+                'telefono',
+                apoderado.telefono
+            )
+
+            apoderado.email = apoderado_data.get(
+                'email',
+                apoderado.email
+            )
+
+            apoderado.direccion = apoderado_data.get(
+                'direccion',
+                apoderado.direccion
+            )
+
+            apoderado.save()
+
+        else:
+
+            datos_nuevo = apoderado_data.copy()
+
+            # Evitar error si viene id del frontend
+            datos_nuevo.pop('id', None)
+
+            apoderado = Apoderado.objects.create(
+                **datos_nuevo
+            )
+
+        # =====================================================
+        # VALIDAR ESTUDIANTE
+        # =====================================================
 
         dni_estudiante = estudiante_data.get("dni")
 
         if dni_estudiante:
+
             existe = Estudiante.objects.filter(
                 dni=dni_estudiante
             ).exists()
 
             if existe:
+
                 return Response(
                     {
                         "error": "Ya existe un estudiante con ese DNI"
@@ -139,34 +187,76 @@ class RegistroAlumnoView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+        # =====================================================
+        # CREAR ESTUDIANTE
+        # =====================================================
+
         estudiante = Estudiante.objects.create(
             **estudiante_data
         )
 
-        if ApoderadoEstudiante.objects.filter(
+        # =====================================================
+        # CREAR RELACIÓN APODERADO - ESTUDIANTE
+        # =====================================================
+
+        relacion_existente = ApoderadoEstudiante.objects.filter(
             apoderado=apoderado,
             estudiante=estudiante
-        ).exists():
+        ).exists()
 
-            return Response(
-                {
-                    "error": "La relación ya existe"
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )    
+        if not relacion_existente:
 
-        ApoderadoEstudiante.objects.create(
-            apoderado=apoderado,
-            estudiante=estudiante,
-            tipo_relacion=data['tipo_relacion'],
-            es_principal=data['es_principal']
-        )
+            ApoderadoEstudiante.objects.create(
+                apoderado=apoderado,
+                estudiante=estudiante,
+                tipo_relacion=data['tipo_relacion'],
+                es_principal=data.get(
+                    'es_principal',
+                    True
+                )
+            )
+
+        generated_credentials = None
+
+        if not apoderado.usuarios.exists():
+
+            temp_password = ''.join(
+                random.choices(
+                    string.ascii_letters +
+                    string.digits,
+                    k=8
+                )
+            )
+
+            usuario = Usuario.objects.create(
+                username=apoderado.dni,
+                first_name=apoderado.nombres,
+                last_name=apoderado.apellidos,
+                email=apoderado.email,
+                is_parent=True,
+                first_login=True,
+                apoderado_rel=apoderado,
+                is_active=True
+            )
+
+            usuario.set_password(temp_password)
+            usuario.save()
+
+            generated_credentials = {
+                "username": usuario.username,
+                "password": temp_password
+            }
+
+        # =====================================================
+        # RESPUESTA
+        # =====================================================
 
         return Response(
-        {
-            "message": "Alumno registrado correctamente",
-            "estudiante_id": estudiante.id,
-            "apoderado_id": apoderado.id
-        },
-        status=status.HTTP_201_CREATED
-)
+            {
+                "message": "Alumno registrado correctamente",
+                "estudiante_id": estudiante.id,
+                "apoderado_id": apoderado.id,
+                "generated_credentials": generated_credentials
+            },
+            status=status.HTTP_201_CREATED
+        )

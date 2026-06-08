@@ -55,10 +55,6 @@ class EstudianteSerializer(
     serializers.ModelSerializer
 ):
 
-    aula_nombre = serializers.CharField(
-        source='aula.nombre',
-        read_only=True
-    )
 
     codigo_estudiante = serializers.CharField(
         read_only=True
@@ -81,8 +77,6 @@ class EstudianteSerializer(
             'fecha_nacimiento',
             'codigo_estudiante',
             'dni',
-            'aula',
-            'aula_nombre',
             'apoderados_detail'
         ]
     
@@ -119,12 +113,6 @@ class ApoderadoEstudianteSerializer(
 class HijoSerializer(
     serializers.ModelSerializer
 ):
-
-    aula_nombre = serializers.CharField(
-        source='aula.nombre',
-        read_only=True
-    )
-
     class Meta:
         model = Estudiante
         fields = [
@@ -132,7 +120,6 @@ class HijoSerializer(
             'nombres',
             'apellidos',
             'codigo_estudiante',
-            'aula_nombre'
         ]
 
 class ApoderadoProfileSerializer(
