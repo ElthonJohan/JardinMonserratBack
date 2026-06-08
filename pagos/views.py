@@ -8,11 +8,22 @@ from django.db.models import Q, Sum, Count
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion, Banco
-from estudiantes.models import Estudiante, Apoderado
+from estudiantes.models import Estudiante, ApoderadoEstudiante
 from .serializers import (
     PagoSerializer, ConceptoPagoSerializer, DeudaSerializer,
-    CajaSerializer, PagoAsignacionSerializer, PagoManualSerializer, BancoSerializer
+    PagoPendienteSerializer,
+    RechazarPagoSerializer,
+    CajaSerializer, PagoAsignacionSerializer, PagoManualSerializer, RegistrarPagoSerializer, BancoSerializer, RegistrarPagoSerializer
 )
+# pagos/views.py
+
+from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+
+
+from notificaciones.models import Notificacion
+from usuarios.models import Usuario
 
 
 class ConceptoPagoViewSet(viewsets.ModelViewSet):
@@ -577,3 +588,364 @@ class BancoViewSet(viewsets.ModelViewSet):
     ordering_fields = ['nombre', 'activo']
     ordering = ['nombre']
     pagination_class = None
+    
+class RegistrarPagoParentView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+
+        serializer = RegistrarPagoSerializer(
+            data=request.data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        deuda = serializer.validated_data['deuda']
+
+        pago = Pago.objects.create(
+
+            alumno=deuda.alumno,
+
+            monto_total_entregado=
+                serializer.validated_data['monto'],
+
+            metodo_pago=
+                serializer.validated_data['metodo_pago'],
+
+            numero_operacion=
+                serializer.validated_data.get(
+                    'numero_operacion'
+                ),
+
+            comprobante_img=
+                serializer.validated_data[
+                    'comprobante_img'
+                ],
+
+            estado='REGISTRADO'
+        )
+
+        admins = Usuario.objects.filter(
+            is_staff=True
+        )
+
+        for admin in admins:
+
+            Notificacion.objects.create(
+
+                usuario=admin,
+
+                alumno=deuda.alumno,
+
+                tipo='PAGO_REGISTRADO',
+
+                titulo='Nuevo pago registrado',
+
+                mensaje=(
+                    f'Se registró un pago '
+                    f'de S/ {pago.monto_total_entregado} '
+                    f'para {deuda.alumno}'
+                )
+            )
+
+        return Response(
+            {
+                "message":
+                    "Pago registrado correctamente. "
+                    "Pendiente de validación.",
+
+                "pago_id":
+                    pago.id
+            },
+            status=status.HTTP_201_CREATED
+        )
+        
+class PagosPendientesView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        pagos = (
+            Pago.objects
+            .filter(
+                estado='REGISTRADO'
+            )
+            .select_related(
+                'alumno',
+                'deuda',
+                'deuda__concepto'
+            )
+            .order_by(
+                '-fecha_pago'
+            )
+        )
+
+        serializer = (
+            PagoPendienteSerializer(
+                pagos,
+                many=True
+            )
+        )
+
+        return Response(
+            serializer.data
+        )
+        
+class AprobarPagoView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pago_id):
+
+        pago = get_object_or_404(
+            Pago.objects.select_related(
+                'alumno',
+                'deuda'
+            ),
+            id=pago_id
+        )
+
+        if pago.estado != 'REGISTRADO':
+
+            return Response(
+                {
+                    "message":
+                    "El pago ya fue procesado."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not pago.deuda:
+
+            return Response(
+                {
+                    "message":
+                    "El pago no tiene deuda asociada."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if (
+            pago.monto_total_entregado >
+            pago.deuda.saldo_pendiente
+        ):
+
+            return Response(
+                {
+                    "message":
+                    "El monto excede la deuda pendiente."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        PagoAsignacion.objects.create(
+            pago=pago,
+            deuda=pago.deuda,
+            monto_aplicado=
+                pago.monto_total_entregado
+        )
+
+        pago.estado = 'APROBADO'
+        pago.fecha_aprobacion = timezone.now()
+        pago.usuario_validador = request.user
+        pago.save()
+
+        # Notificación al apoderado
+        relacion = (
+            ApoderadoEstudiante.objects
+            .filter(
+                estudiante=pago.alumno,
+                es_principal=True
+            )
+            .select_related(
+                'apoderado'
+            )
+            .first()
+        )
+
+        if (
+            relacion and
+            hasattr(relacion.apoderado, 'usuarios')
+        ):
+
+            usuario_apoderado = (
+                relacion.apoderado.usuarios.first()
+            )
+
+            if usuario_apoderado:
+
+                Notificacion.objects.create(
+                    usuario=usuario_apoderado,
+                    alumno=pago.alumno,
+                    tipo='PAGO_APROBADO',
+                    titulo='Pago aprobado',
+                    mensaje=(
+                        f'Su pago de '
+                        f'S/ {pago.monto_total_entregado} '
+                        f'ha sido aprobado.'
+                    )
+                )
+
+        return Response(
+            {
+                "message":
+                "Pago aprobado exitosamente."
+            }
+        )
+
+class RechazarPagoView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(
+        self,
+        request,
+        pago_id
+    ):
+
+        serializer = (
+            RechazarPagoSerializer(
+                data=request.data
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        pago = get_object_or_404(
+            Pago.objects.select_related(
+                'alumno'
+            ),
+            id=pago_id
+        )
+
+        if pago.estado != 'REGISTRADO':
+
+            return Response(
+                {
+                    "message":
+                    "El pago ya fue procesado."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pago.estado = 'RECHAZADO'
+
+        pago.motivo_rechazo = (
+            serializer.validated_data[
+                'motivo'
+            ]
+        )
+
+        pago.usuario_validador = (
+            request.user
+        )
+
+        pago.fecha_aprobacion = (
+            timezone.now()
+        )
+
+        pago.save()
+
+        # Buscar apoderado principal
+        relacion = (
+            ApoderadoEstudiante.objects
+            .filter(
+                estudiante=pago.alumno,
+                es_principal=True
+            )
+            .select_related(
+                'apoderado'
+            )
+            .first()
+        )
+
+        if relacion:
+
+            usuario_apoderado = (
+                relacion.apoderado
+                .usuarios
+                .first()
+            )
+
+            if usuario_apoderado:
+
+                Notificacion.objects.create(
+
+                    usuario=usuario_apoderado,
+
+                    alumno=pago.alumno,
+
+                    tipo='PAGO_RECHAZADO',
+
+                    titulo='Pago rechazado',
+
+                    mensaje=(
+                        f'Su pago de '
+                        f'S/ {pago.monto_total_entregado} '
+                        f'fue rechazado. '
+                        f'Motivo: '
+                        f'{pago.motivo_rechazo}'
+                    )
+                )
+
+        return Response(
+            {
+                "message":
+                "Pago rechazado correctamente."
+            },
+            status=status.HTTP_200_OK
+        )
+        
+# pagos/views.py
+
+class PagosPendientesView(
+    APIView
+):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request
+    ):
+
+        pagos = (
+            Pago.objects
+            .filter(
+                estado='REGISTRADO'
+            )
+            .select_related(
+                'alumno',
+                'deuda',
+                'deuda__concepto'
+            )
+            .order_by(
+                '-fecha_pago'
+            )
+        )
+
+        serializer = (
+            PagoPendienteSerializer(
+                pagos,
+                many=True,
+                context={
+                    'request':
+                    request
+                }
+            )
+        )
+
+        return Response(
+            serializer.data
+        )

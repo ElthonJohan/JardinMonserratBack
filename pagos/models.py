@@ -136,6 +136,14 @@ class Pago(models.Model):
     fecha_pago = models.DateTimeField(default=timezone.now)
     metodo_pago = models.CharField(max_length=20, choices=METODO_PAGO_CHOICES, default='Efectivo')
     
+    # Relación con Deudas a través de PagoAsignacion
+    deuda = models.ForeignKey(
+    Deuda,
+    on_delete=models.CASCADE,
+    related_name='pagos_reportados',
+    null=True,
+    blank=True
+)
     # Datos Bancarios y Comprobante
     banco = models.ForeignKey(Banco, on_delete=models.PROTECT, null=True, blank=True)
     numero_operacion = models.CharField(max_length=50, blank=True, null=True)

@@ -2,10 +2,11 @@ from django.db import models
 
 class Notificacion(models.Model):
     TIPO_CHOICES = [
-        ('PAGO_APROBADO', 'Pago Aprobado'),
-        ('PAGO_RECHAZADO', 'Pago Rechazado'),
-        ('SISTEMA', 'Alerta de Sistema'),
-    ]
+    ('PAGO_REGISTRADO', 'Pago Registrado'),
+    ('PAGO_APROBADO', 'Pago Aprobado'),
+    ('PAGO_RECHAZADO', 'Pago Rechazado'),
+    ('SISTEMA', 'Alerta de Sistema'),
+]
 
     usuario = models.ForeignKey('usuarios.Usuario', on_delete=models.CASCADE, related_name='notificaciones')
     alumno = models.ForeignKey('estudiantes.Estudiante', on_delete=models.CASCADE, null=True, blank=True)

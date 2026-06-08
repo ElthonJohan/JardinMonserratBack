@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion, Banco
-from estudiantes.models import Estudiante
+from estudiantes.models import Estudiante, ApoderadoEstudiante
 from django.utils import timezone
 from django.db.models import Sum  # Importar esto al inicio del archivo
 
@@ -223,3 +223,149 @@ class CajaSerializer(serializers.ModelSerializer):
             total=Sum('monto_total_entregado')
         )['total'] or 0
         return float(total)
+
+
+class RegistrarPagoSerializer(serializers.Serializer):
+
+    deuda_id = serializers.IntegerField()
+
+    metodo_pago = serializers.ChoiceField(
+        choices=Pago.METODO_PAGO_CHOICES
+    )
+
+    monto = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
+
+    numero_operacion = serializers.CharField(
+        required=False,
+        allow_blank=True
+    )
+
+    comprobante_img = serializers.ImageField()
+
+    def validate(self, attrs):
+
+        try:
+            deuda = Deuda.objects.get(
+                id=attrs['deuda_id']
+            )
+        except Deuda.DoesNotExist:
+            raise serializers.ValidationError(
+                "La deuda no existe."
+            )
+
+        if deuda.estado == 'Pagado':
+            raise serializers.ValidationError(
+                "Esta deuda ya fue cancelada."
+            )
+
+        attrs['deuda'] = deuda  
+
+        return attrs
+    
+class PagoPendienteSerializer(serializers.ModelSerializer):
+
+    alumno_nombre = serializers.CharField(
+        source='alumno.__str__',
+        read_only=True
+    )
+
+    concepto = serializers.CharField(
+        source='deuda.concepto.nombre',
+        read_only=True
+    )
+
+    class Meta:
+        model = Pago
+
+        fields = [
+            'id',
+            'alumno_nombre',
+            'concepto',
+            'monto_total_entregado',
+            'metodo_pago',
+            'numero_operacion',
+            'fecha_pago',
+            'estado',
+            'comprobante_img'
+        ]
+        
+class RechazarPagoSerializer(
+    serializers.Serializer
+):
+
+    motivo = serializers.CharField(
+        required=True,
+        max_length=500
+    )
+    
+# pagos/serializers.py
+
+class PagoPendienteSerializer(
+    serializers.ModelSerializer
+):
+
+    alumno_nombre = serializers.SerializerMethodField()
+    apoderado_nombre = serializers.SerializerMethodField()
+    
+    concepto_nombre = serializers.CharField(
+        source='deuda.concepto.nombre',
+        read_only=True
+    )
+
+    deuda_id = serializers.IntegerField(
+        source='deuda.id',
+        read_only=True
+    )
+
+    class Meta:
+
+        model = Pago
+
+        fields = [
+            'id',
+            'deuda_id',
+            'alumno_nombre',
+            'concepto_nombre',
+            'monto_total_entregado',
+            'metodo_pago',
+            'numero_operacion',
+            'fecha_pago',
+            'estado',
+            'comprobante_img'
+        ]
+
+    def get_alumno_nombre(
+        self,
+        obj
+    ):
+        return (
+            f"{obj.alumno.nombres} "
+            f"{obj.alumno.apellidos}"
+        )
+    def get_apoderado_nombre(
+    self,
+    obj
+    ):
+
+        relacion = (
+            ApoderadoEstudiante.objects
+            .filter(
+                estudiante=obj.alumno,
+                es_principal=True
+            )
+            .select_related(
+                'apoderado'
+            )
+            .first()
+        )
+
+        if not relacion:
+            return None
+
+        return (
+            f"{relacion.apoderado.nombres} "
+            f"{relacion.apoderado.apellidos}"
+        )
