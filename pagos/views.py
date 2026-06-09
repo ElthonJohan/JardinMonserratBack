@@ -609,7 +609,7 @@ class RegistrarPagoParentView(APIView):
         pago = Pago.objects.create(
 
             alumno=deuda.alumno,
-
+            deuda=deuda,
             monto_total_entregado=
                 serializer.validated_data['monto'],
 
@@ -649,7 +649,8 @@ class RegistrarPagoParentView(APIView):
                     f'Se registró un pago '
                     f'de S/ {pago.monto_total_entregado} '
                     f'para {deuda.alumno}'
-                )
+                ),
+                ruta='/pagos-pendientes'
             )
 
         return Response(
@@ -751,6 +752,22 @@ class AprobarPagoView(APIView):
                 pago.monto_total_entregado
         )
 
+        caja = Caja.objects.filter(
+            estado='Abierta'
+        ).first()
+
+        if not caja:
+
+            return Response(
+                {
+                    "message":
+                    "No existe una caja abierta para registrar el pago."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pago.caja = caja
+
         pago.estado = 'APROBADO'
         pago.fecha_aprobacion = timezone.now()
         pago.usuario_validador = request.user
@@ -789,7 +806,8 @@ class AprobarPagoView(APIView):
                         f'Su pago de '
                         f'S/ {pago.monto_total_entregado} '
                         f'ha sido aprobado.'
-                    )
+                    ),
+                    ruta='/intranet/pagos'
                 )
 
         return Response(
@@ -894,7 +912,8 @@ class RechazarPagoView(APIView):
                         f'fue rechazado. '
                         f'Motivo: '
                         f'{pago.motivo_rechazo}'
-                    )
+                    ),
+                    ruta='/intranet/pagos'
                 )
 
         return Response(

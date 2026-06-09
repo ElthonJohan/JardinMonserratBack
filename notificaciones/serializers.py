@@ -7,7 +7,7 @@ class NotificacionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Notificacion
-        fields = ['id', 'usuario', 'alumno_id', 'alumno_nombre', 'titulo', 'mensaje', 'tipo', 'leido', 'fecha_creacion']
+        fields = "__all__"
         read_only_fields = ['id', 'usuario', 'titulo', 'mensaje', 'tipo', 'fecha_creacion']
 
     def get_alumno_nombre(self, obj):

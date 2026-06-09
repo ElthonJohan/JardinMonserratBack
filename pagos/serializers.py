@@ -328,6 +328,7 @@ class PagoPendienteSerializer(
             'id',
             'deuda_id',
             'alumno_nombre',
+            'apoderado_nombre',
             'concepto_nombre',
             'monto_total_entregado',
             'metodo_pago',

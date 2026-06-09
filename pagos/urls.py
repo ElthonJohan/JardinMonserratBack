@@ -25,19 +25,19 @@ path(
     name='registrar-pago-parent'
 ),
 path(
-    'pagos/pendientes/',
+    'pendientes/',
     PagosPendientesView.as_view(),
     name='pagos-pendientes'
 ),
 #aprobar pagos
 path(
-    'pagos/<int:pago_id>/aprobar/',
-    AprobarPagoView.as_view({'post': 'aprobar_pago'}),
+    '<int:pago_id>/aprobar/',
+    AprobarPagoView.as_view(),
     name='aprobar-pago'
 ),
 #rechazar pagos
 path(
-    'pagos/<int:pago_id>/rechazar/',
-    RechazarPagoView.as_view({'post': 'rechazar_pago'}),
+    '<int:pago_id>/rechazar/',
+    RechazarPagoView.as_view(),
     name='rechazar-pago')
 ]

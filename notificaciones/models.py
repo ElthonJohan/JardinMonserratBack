@@ -13,6 +13,12 @@ class Notificacion(models.Model):
     titulo = models.CharField(max_length=200)
     mensaje = models.TextField()
     tipo = models.CharField(max_length=50, choices=TIPO_CHOICES, default='SISTEMA')
+    # NUEVO
+    ruta = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True
+    )
     leido = models.BooleanField(default=False)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
 
