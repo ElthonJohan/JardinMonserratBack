@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from estudiantes.models import Estudiante
+from estudiantes.models import Apoderado, ApoderadoEstudiante
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
@@ -22,29 +22,26 @@ class PermisoViewSet(viewsets.ViewSet):
     
     def list(self, request):
         excluded_apps = ['admin', 'auth', 'contenttypes', 'sessions']
-        content_types = ContentType.objects.exclude(app_label__in=excluded_apps)
         
-        result = []
-        for ct in content_types:
-            perms = Permission.objects.filter(content_type=ct)
-            if not perms.exists():
-                continue
+        # Traer TODOS los permisos y hacer un JOIN con content_type en UNA sola consulta
+        permisos_db = Permission.objects.select_related('content_type').exclude(
+            content_type__app_label__in=excluded_apps
+        )
+        
+        # Agrupar en memoria (O(N) tiempo, 1 sola consulta)
+        modulos_dict = {}
+        for p in permisos_db:
+            modulo_name = p.content_type.model.capitalize()
+            if modulo_name not in modulos_dict:
+                modulos_dict[modulo_name] = {}
                 
-            modulo_name = ct.model.capitalize()
+            action = p.codename.split('_')[0]
+            modulos_dict[modulo_name][action] = {
+                "id": p.id,
+                "codename": p.codename
+            }
             
-            permisos_dict = {}
-            for p in perms:
-                action = p.codename.split('_')[0]
-                permisos_dict[action] = {
-                    "id": p.id,
-                    "codename": p.codename
-                }
-                
-            result.append({
-                "modulo": modulo_name,
-                "permisos": permisos_dict
-            })
-            
+        result = [{"modulo": k, "permisos": v} for k, v in modulos_dict.items()]
         return Response(result)
 
 class RoleViewSet(viewsets.ModelViewSet):
@@ -65,60 +62,120 @@ class RegisterView(generics.CreateAPIView):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_parent(request):
-    codigo_estudiante = request.data.get('codigo_estudiante')
+
+    dni = request.data.get('dni')
     password = request.data.get('password')
 
-    if not codigo_estudiante or not password:
-        return Response({"detail": "Código y contraseña son requeridos."}, status=400)
+    if not dni or not password:
+        return Response(
+            {
+                "detail": "DNI y contraseña son requeridos."
+            },
+            status=400
+        )
 
     try:
-        estudiante = Estudiante.objects.get(codigo_estudiante=codigo_estudiante)
-        apoderado = estudiante.apoderado
-        usuario = apoderado.usuarios.first()
-        
-        if not usuario:
-            return Response({"detail": "Usuario no encontrado."}, status=404)
 
-        user = authenticate(username=usuario.username, password=password)
-        
+        apoderado = Apoderado.objects.get(
+            dni=dni
+        )
+
+        usuario = apoderado.usuarios.first()
+
+        if not usuario:
+            return Response(
+                {
+                    "detail": "Usuario no encontrado."
+                },
+                status=404
+            )
+
+        user = authenticate(
+            username=usuario.username,
+            password=password
+        )
+
         if user is None:
-            return Response({"detail": "Contraseña incorrecta."}, status=401)
+            return Response(
+                {
+                    "detail": "Credenciales incorrectas."
+                },
+                status=401
+            )
 
         if not user.is_active:
-            return Response({"detail": "Cuenta desactivada."}, status=403)
+            return Response(
+                {
+                    "detail": "Cuenta desactivada."
+                },
+                status=403
+            )
 
         refresh = RefreshToken.for_user(user)
+
+        hijos = []
+
+        relaciones = (
+            ApoderadoEstudiante.objects
+            .filter(apoderado=apoderado)
+            .select_related('estudiante')
+        )
+
+        for relacion in relaciones:
+
+            hijos.append({
+                "id": relacion.estudiante.id,
+                "nombre": (
+                    f"{relacion.estudiante.nombres} "
+                    f"{relacion.estudiante.apellidos}"
+                ),
+                "codigo": relacion.estudiante.codigo_estudiante,
+                "tipo_relacion": relacion.tipo_relacion
+            })
 
         response_data = {
             "success": True,
             "token": str(refresh.access_token),
             "refresh": str(refresh),
+
             "user": {
                 "id": user.id,
                 "username": user.username,
-                "full_name": f"{apoderado.nombres} {apoderado.apellidos}",
+                "full_name": (
+                    f"{apoderado.nombres} "
+                    f"{apoderado.apellidos}"
+                ),
                 "apoderado_id": apoderado.id,
                 "user_type": "parent",
                 "first_login": user.first_login
             },
-            "estudiante": {
-                "id": estudiante.id,
-                "nombre": str(estudiante),
-                "codigo": estudiante.codigo_estudiante
-            }
+
+            "hijos": hijos
         }
 
-        # Si es primer login, avisar que debe cambiar contraseña
         if user.first_login:
-            response_data["requires_password_change"] = True
-            response_data["message"] = "Debes cambiar tu contraseña en el primer ingreso."
+
+            response_data[
+                "requires_password_change"
+            ] = True
+
+            response_data[
+                "message"
+            ] = (
+                "Debes cambiar tu contraseña "
+                "en el primer ingreso."
+            )
 
         return Response(response_data)
 
-    except Estudiante.DoesNotExist:
-        return Response({"detail": "Código de estudiante no encontrado."}, status=404)
-    
+    except Apoderado.DoesNotExist:
 
+        return Response(
+            {
+                "detail": "DNI no registrado."
+            },
+            status=404
+        )
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def change_password_first_login(request):

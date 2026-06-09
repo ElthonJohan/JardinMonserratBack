@@ -7,12 +7,23 @@ from django.utils import timezone
 from django.db.models import Q, Sum, Count
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion
-from estudiantes.models import Estudiante, Apoderado
+from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion, Banco
+from estudiantes.models import Estudiante, ApoderadoEstudiante
 from .serializers import (
     PagoSerializer, ConceptoPagoSerializer, DeudaSerializer,
-    CajaSerializer, PagoAsignacionSerializer
+    PagoPendienteSerializer,
+    RechazarPagoSerializer,
+    CajaSerializer, PagoAsignacionSerializer, PagoManualSerializer, RegistrarPagoSerializer, BancoSerializer, RegistrarPagoSerializer
 )
+# pagos/views.py
+
+from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+
+
+from notificaciones.models import Notificacion
+from usuarios.models import Usuario
 
 
 class ConceptoPagoViewSet(viewsets.ModelViewSet):
@@ -34,8 +45,8 @@ class DeudaViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['alumno', 'estado', 'anio']
     search_fields = ['alumno__nombres', 'alumno__apellidos', 'concepto__nombre']
-    ordering_fields = ['fecha_vencimiento', 'monto_total', 'estado', 'anio']
-    ordering = ['fecha_vencimiento']
+    ordering_fields = ['fecha_vencimiento', 'monto_total', 'estado', 'anio', 'id']
+    ordering = ['id']
     
     def get_queryset(self):
         """
@@ -68,37 +79,168 @@ class PagoViewSet(viewsets.ModelViewSet):
     ordering_fields = ['fecha_pago', 'monto_total_entregado']
     ordering = ['-fecha_pago']
     
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return PagoManualSerializer
+        return PagoSerializer
+
     def perform_create(self, serializer):
         """
-        Lógica de creación de Pago con abono FIFO:
-        1. Valida que el usuario tenga una Caja abierta
-        2. Reparte el monto entre las deudas pendientes (FIFO por fecha_vencimiento)
-        3. Crea PagoAsignacion para cada deuda afectada
+        Lógica de creación de Pago con asignación manual.
+        - Si es un apoderado: Estado REGISTRADO, sin caja. Los saldos no se actualizan.
+        - Si es administración: Estado APROBADO, asigna caja y validador. Los saldos se actualizan inmediatamente.
         """
-        # Validar que el usuario tenga una Caja abierta
-        caja_abierta = Caja.objects.filter(
-            usuario=self.request.user,
-            estado='Abierta'
-        ).first()
-        
-        if not caja_abierta:
-            raise serializers.ValidationError(
-                {"detail": "No tienes una Caja abierta. Abre una caja antes de registrar pagos."}
-            )
-        
         try:
             with transaction.atomic():
-                # Guardar el pago con el usuario y la caja
-                pago = serializer.save(
-                    usuario_registro=self.request.user,
-                    caja=caja_abierta
-                )
+                # Extraemos el detalle de pagos validado por el serializer
+                detalles_pago = serializer.validated_data.pop('detalles_pago', [])
                 
-                # Aplicar la lógica FIFO de abono multinivel
-                self._aplicar_abono_fifo(pago)
-        
+                # Determinamos si el usuario es apoderado
+                es_apoderado = hasattr(self.request.user, 'apoderado_rel') and self.request.user.apoderado_rel is not None
+                
+                if es_apoderado:
+                    # Lógica para apoderados desde su casa
+                    pago = serializer.save(
+                        usuario_creador=self.request.user,
+                        estado='REGISTRADO',
+                        caja=None
+                    )
+                else:
+                    # Lógica para administración (cajero, admin, etc)
+                    caja_form = serializer.validated_data.get('caja')
+                    pago = serializer.save(
+                        usuario_creador=self.request.user,
+                        estado='APROBADO',
+                        caja=caja_form,
+                        fecha_aprobacion=timezone.now(),
+                        usuario_validador=self.request.user
+                    )
+                
+                # Crear las asignaciones manualmente
+                asignaciones = []
+                for detalle in detalles_pago:
+                    asignaciones.append(
+                        PagoAsignacion(
+                            pago=pago,
+                            deuda_id=detalle['deuda_id'],
+                            monto_aplicado=detalle['monto_asignado']
+                        )
+                    )
+                
+                # Guardar las asignaciones en bloque
+                PagoAsignacion.objects.bulk_create(asignaciones)
+                
+                # Si el pago ya nace APROBADO, debemos actualizar los saldos inmediatamente
+                if pago.estado == 'APROBADO':
+                    # Recuperar las asignaciones desde la DB para tener la instancia de deuda correcta
+                    for asignacion in pago.asignaciones.all():
+                        asignacion.deuda.actualizar_estado()
+                
         except Exception as e:
             raise serializers.ValidationError({"detail": str(e)})
+            
+    @action(detail=False, methods=['get'])
+    def pendientes_aprobacion(self, request):
+        """Lista pagos en estado REGISTRADO"""
+        pagos = self.get_queryset().filter(estado='REGISTRADO')
+        page = self.paginate_queryset(pagos)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(pagos, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def pendientes_count(self, request):
+        """Devuelve la cantidad de pagos pendientes (REGISTRADO)"""
+        count = self.get_queryset().filter(estado='REGISTRADO').count()
+        return Response({"count": count})
+            
+    @action(detail=True, methods=['post'])
+    def procesar_aprobacion(self, request, pk=None):
+        """
+        Procesa la aprobación o rechazo de un pago manual.
+        Recibe JSON con: estado ('APROBADO', 'RECHAZADO'), caja_id (opcional), motivo_rechazo (opcional)
+        """
+        pago = self.get_object()
+        estado_nuevo = request.data.get('estado')
+        caja_id = request.data.get('caja_id')
+        motivo_rechazo = request.data.get('motivo_rechazo')
+
+        if pago.estado != 'REGISTRADO':
+            return Response(
+                {"detail": f"El pago no puede ser procesado porque su estado actual es {pago.estado}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if estado_nuevo not in ['APROBADO', 'RECHAZADO']:
+            return Response(
+                {"detail": "Estado inválido. Debe ser APROBADO o RECHAZADO."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            with transaction.atomic():
+                from notificaciones.models import Notificacion
+                
+                if estado_nuevo == 'RECHAZADO':
+                    if not motivo_rechazo:
+                        return Response(
+                            {"detail": "El motivo de rechazo es obligatorio."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    pago.estado = 'RECHAZADO'
+                    pago.motivo_rechazo = motivo_rechazo
+                    pago.usuario_validador = request.user
+                    pago.save()
+                    
+                    if pago.usuario_creador:
+                        Notificacion.objects.create(
+                            usuario=pago.usuario_creador,
+                            alumno=pago.alumno,
+                            titulo="Pago Rechazado",
+                            mensaje=f"Tu pago por S/{pago.monto_total_entregado} ha sido rechazado. Motivo: {motivo_rechazo}",
+                            tipo='PAGO_RECHAZADO'
+                        )
+
+                elif estado_nuevo == 'APROBADO':
+                    if not caja_id:
+                        return Response(
+                            {"detail": "Debe especificar una caja_id para aprobar el pago."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                        
+                    caja = Caja.objects.filter(id=caja_id, estado='Abierta').first()
+                    if not caja:
+                        return Response(
+                            {"detail": "La caja especificada no existe o no está abierta."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                        
+                    pago.estado = 'APROBADO'
+                    pago.caja = caja
+                    pago.fecha_aprobacion = timezone.now()
+                    pago.usuario_validador = request.user
+                    pago.save()
+                    
+                    # Actualizar saldo de cada deuda afectada
+                    for asignacion in pago.asignaciones.all():
+                        asignacion.deuda.actualizar_estado()
+                        
+                    if pago.usuario_creador:
+                        Notificacion.objects.create(
+                            usuario=pago.usuario_creador,
+                            alumno=pago.alumno,
+                            titulo="Pago Aprobado",
+                            mensaje=f"Tu pago por S/{pago.monto_total_entregado} ha sido aprobado exitosamente.",
+                            tipo='PAGO_APROBADO'
+                        )
+
+            return Response({"detail": f"Pago {estado_nuevo.lower()} exitosamente."}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def _aplicar_abono_fifo(self, pago):
         """
@@ -112,11 +254,11 @@ class PagoViewSet(viewsets.ModelViewSet):
         monto_disponible = pago.monto_total_entregado
         asignaciones_creadas = 0
         
-        # Obtener deudas pendientes/parciales del alumno, ordenadas por fecha_vencimiento (ASC)
+        # Obtener deudas pendientes/parciales del alumno, ordenadas por ID (orden de creación: Cuota -> Matrícula -> Pensiones)
         deudas_pendientes = Deuda.objects.filter(
             alumno=pago.alumno,
             estado__in=['Pendiente', 'Parcial']
-        ).order_by('fecha_vencimiento')
+        ).order_by('id')
         
         for deuda in deudas_pendientes:
             if monto_disponible <= 0:
@@ -329,58 +471,500 @@ class CajaViewSet(viewsets.ModelViewSet):
             'mensaje': 'Caja abierta exitosamente.',
             'caja': serializer.data
         }, status=status.HTTP_201_CREATED)
-
+        
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def parent_payment_dashboard(request):
-    """
-    Dashboard de pagos para el Portal de Apoderados
-    """
+
     usuario = request.user
 
-    # Obtener el apoderado asociado al usuario logueado usando el nombre de campo correcto 'apoderado_rel'
     apoderado = usuario.apoderado_rel
 
     if not apoderado:
+
         return Response({
             "total_pendiente": 0,
-            "deudas_pendientes": [],
-            "pagos_recientes": [],
-            "mensaje": "No se encontró perfil de apoderado asociado a este usuario."
+            "alumnos": []
         })
 
-    # Obtener todos los estudiantes de este apoderado
-    alumnos = Estudiante.objects.filter(apoderado=apoderado)
+    alumnos = Estudiante.objects.filter(
+        apoderados__apoderado=apoderado
+    ).distinct()
 
-    if not alumnos.exists():
-        return Response({
-            "total_pendiente": 0,
-            "deudas_pendientes": [],
-            "pagos_recientes": [],
-            "mensaje": "Este apoderado no tiene estudiantes registrados."
+    alumnos_data = []
+
+    total_familiar = 0
+
+    for alumno in alumnos:
+
+        deudas = (
+            Deuda.objects
+            .filter(
+                alumno=alumno,
+                estado__in=[
+                    'Pendiente',
+                    'Parcial'
+                ]
+            )
+            .select_related(
+                'concepto'
+            )
+            .order_by(
+                'fecha_vencimiento'
+            )
+        )
+
+        pagos = (
+            Pago.objects
+            .filter(
+                alumno=alumno
+            )
+            .order_by(
+                '-fecha_pago'
+            )[:5]
+        )
+
+        total_alumno = sum(
+            d.saldo_pendiente
+            for d in deudas
+        )
+
+        total_familiar += total_alumno
+
+        alumnos_data.append({
+
+            "id":
+                alumno.id,
+
+            "codigo":
+                alumno.codigo_estudiante,
+
+            "nombre":
+                f"{alumno.nombres} "
+                f"{alumno.apellidos}",
+
+            "total_pendiente":
+                float(total_alumno),
+
+            "deudas":
+                DeudaSerializer(
+                    deudas,
+                    many=True
+                ).data,
+
+            "pagos_recientes":
+                PagoSerializer(
+                    pagos,
+                    many=True
+                ).data
         })
 
-    # Deudas pendientes (Pendiente o Parcial)
-    deudas_pendientes = Deuda.objects.filter(
-        alumno__in=alumnos,
-        estado__in=['Pendiente', 'Parcial']
-    ).select_related('concepto', 'alumno').order_by('fecha_vencimiento')
+    return Response({
+
+        "apoderado_nombre":
+            f"{apoderado.nombres} "
+            f"{apoderado.apellidos}",
+
+        "cantidad_hijos":
+            alumnos.count(),
+
+        "total_pendiente":
+            float(total_familiar),
+
+        "alumnos":
+            alumnos_data
+    })
+
+class BancoViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar bancos (CRUD).
+    """
+    queryset = Banco.objects.all()
+    serializer_class = BancoSerializer
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['activo']
+    search_fields = ['nombre', 'numero_cuenta', 'cci']
+    ordering_fields = ['nombre', 'activo']
+    ordering = ['nombre']
+    pagination_class = None
     
-    # Como saldo_pendiente es probablemente una propiedad calculada, 
-    # usamos sum() de Python sobre el queryset en lugar de aggregate(Sum()).
-    total_pendiente = sum(d.saldo_pendiente for d in deudas_pendientes)
+class RegistrarPagoParentView(APIView):
 
-    # Últimos pagos
-    pagos_recientes = Pago.objects.filter(
-        alumno__in=alumnos
-    ).order_by('-fecha_pago')[:8]
+    permission_classes = [IsAuthenticated]
 
-    data = {
-        "total_pendiente": float(total_pendiente),
-        "deudas_pendientes": DeudaSerializer(deudas_pendientes, many=True).data,
-        "pagos_recientes": PagoSerializer(pagos_recientes, many=True).data,
-        "alumnos": [{"id": a.id, "nombre": str(a)} for a in alumnos],
-        "apoderado_nombre": f"{apoderado.nombres} {apoderado.apellidos}",
-    }
+    @transaction.atomic
+    def post(self, request):
 
-    return Response(data)
+        serializer = RegistrarPagoSerializer(
+            data=request.data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        deuda = serializer.validated_data['deuda']
+
+        pago = Pago.objects.create(
+
+            alumno=deuda.alumno,
+            deuda=deuda,
+            monto_total_entregado=
+                serializer.validated_data['monto'],
+
+            metodo_pago=
+                serializer.validated_data['metodo_pago'],
+
+            numero_operacion=
+                serializer.validated_data.get(
+                    'numero_operacion'
+                ),
+
+            comprobante_img=
+                serializer.validated_data[
+                    'comprobante_img'
+                ],
+
+            estado='REGISTRADO'
+        )
+
+        admins = Usuario.objects.filter(
+            is_staff=True
+        )
+
+        for admin in admins:
+
+            Notificacion.objects.create(
+
+                usuario=admin,
+
+                alumno=deuda.alumno,
+
+                tipo='PAGO_REGISTRADO',
+
+                titulo='Nuevo pago registrado',
+
+                mensaje=(
+                    f'Se registró un pago '
+                    f'de S/ {pago.monto_total_entregado} '
+                    f'para {deuda.alumno}'
+                ),
+                ruta='/pagos-pendientes'
+            )
+
+        return Response(
+            {
+                "message":
+                    "Pago registrado correctamente. "
+                    "Pendiente de validación.",
+
+                "pago_id":
+                    pago.id
+            },
+            status=status.HTTP_201_CREATED
+        )
+        
+class PagosPendientesView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        pagos = (
+            Pago.objects
+            .filter(
+                estado='REGISTRADO'
+            )
+            .select_related(
+                'alumno',
+                'deuda',
+                'deuda__concepto'
+            )
+            .order_by(
+                '-fecha_pago'
+            )
+        )
+
+        serializer = (
+            PagoPendienteSerializer(
+                pagos,
+                many=True
+            )
+        )
+
+        return Response(
+            serializer.data
+        )
+        
+class AprobarPagoView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pago_id):
+
+        pago = get_object_or_404(
+            Pago.objects.select_related(
+                'alumno',
+                'deuda'
+            ),
+            id=pago_id
+        )
+
+        if pago.estado != 'REGISTRADO':
+
+            return Response(
+                {
+                    "message":
+                    "El pago ya fue procesado."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not pago.deuda:
+
+            return Response(
+                {
+                    "message":
+                    "El pago no tiene deuda asociada."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if (
+            pago.monto_total_entregado >
+            pago.deuda.saldo_pendiente
+        ):
+
+            return Response(
+                {
+                    "message":
+                    "El monto excede la deuda pendiente."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        PagoAsignacion.objects.create(
+            pago=pago,
+            deuda=pago.deuda,
+            monto_aplicado=
+                pago.monto_total_entregado
+        )
+
+        caja = Caja.objects.filter(
+            estado='Abierta'
+        ).first()
+
+        if not caja:
+
+            return Response(
+                {
+                    "message":
+                    "No existe una caja abierta para registrar el pago."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pago.caja = caja
+
+        pago.estado = 'APROBADO'
+        pago.fecha_aprobacion = timezone.now()
+        pago.usuario_validador = request.user
+        pago.save()
+
+        # Notificación al apoderado
+        relacion = (
+            ApoderadoEstudiante.objects
+            .filter(
+                estudiante=pago.alumno,
+                es_principal=True
+            )
+            .select_related(
+                'apoderado'
+            )
+            .first()
+        )
+
+        if (
+            relacion and
+            hasattr(relacion.apoderado, 'usuarios')
+        ):
+
+            usuario_apoderado = (
+                relacion.apoderado.usuarios.first()
+            )
+
+            if usuario_apoderado:
+
+                Notificacion.objects.create(
+                    usuario=usuario_apoderado,
+                    alumno=pago.alumno,
+                    tipo='PAGO_APROBADO',
+                    titulo='Pago aprobado',
+                    mensaje=(
+                        f'Su pago de '
+                        f'S/ {pago.monto_total_entregado} '
+                        f'ha sido aprobado.'
+                    ),
+                    ruta='/intranet/pagos'
+                )
+
+        return Response(
+            {
+                "message":
+                "Pago aprobado exitosamente."
+            }
+        )
+
+class RechazarPagoView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(
+        self,
+        request,
+        pago_id
+    ):
+
+        serializer = (
+            RechazarPagoSerializer(
+                data=request.data
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        pago = get_object_or_404(
+            Pago.objects.select_related(
+                'alumno'
+            ),
+            id=pago_id
+        )
+
+        if pago.estado != 'REGISTRADO':
+
+            return Response(
+                {
+                    "message":
+                    "El pago ya fue procesado."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pago.estado = 'RECHAZADO'
+
+        pago.motivo_rechazo = (
+            serializer.validated_data[
+                'motivo'
+            ]
+        )
+
+        pago.usuario_validador = (
+            request.user
+        )
+
+        pago.fecha_aprobacion = (
+            timezone.now()
+        )
+
+        pago.save()
+
+        # Buscar apoderado principal
+        relacion = (
+            ApoderadoEstudiante.objects
+            .filter(
+                estudiante=pago.alumno,
+                es_principal=True
+            )
+            .select_related(
+                'apoderado'
+            )
+            .first()
+        )
+
+        if relacion:
+
+            usuario_apoderado = (
+                relacion.apoderado
+                .usuarios
+                .first()
+            )
+
+            if usuario_apoderado:
+
+                Notificacion.objects.create(
+
+                    usuario=usuario_apoderado,
+
+                    alumno=pago.alumno,
+
+                    tipo='PAGO_RECHAZADO',
+
+                    titulo='Pago rechazado',
+
+                    mensaje=(
+                        f'Su pago de '
+                        f'S/ {pago.monto_total_entregado} '
+                        f'fue rechazado. '
+                        f'Motivo: '
+                        f'{pago.motivo_rechazo}'
+                    ),
+                    ruta='/intranet/pagos'
+                )
+
+        return Response(
+            {
+                "message":
+                "Pago rechazado correctamente."
+            },
+            status=status.HTTP_200_OK
+        )
+        
+# pagos/views.py
+
+class PagosPendientesView(
+    APIView
+):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request
+    ):
+
+        pagos = (
+            Pago.objects
+            .filter(
+                estado='REGISTRADO'
+            )
+            .select_related(
+                'alumno',
+                'deuda',
+                'deuda__concepto'
+            )
+            .order_by(
+                '-fecha_pago'
+            )
+        )
+
+        serializer = (
+            PagoPendienteSerializer(
+                pagos,
+                many=True,
+                context={
+                    'request':
+                    request
+                }
+            )
+        )
+
+        return Response(
+            serializer.data
+        )

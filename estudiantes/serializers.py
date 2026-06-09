@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.db import transaction
-from .models import Estudiante, Aula, Apoderado
+from .models import ApoderadoEstudiante, Estudiante, Aula, Apoderado
 
 class AulaSerializer(serializers.ModelSerializer):
     class Meta:
@@ -9,92 +9,63 @@ class AulaSerializer(serializers.ModelSerializer):
 
 
 class ApoderadoSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = Apoderado
         fields = '__all__'
 
     def validate_dni(self, value):
-        # 1. Validar que sean solo números y exactamente 8 dígitos
-        if not value.isdigit() or len(value) != 8:
-            raise serializers.ValidationError("El DNI debe contener exactamente 8 dígitos numéricos.")
+        if value:
+            if not value.isdigit() or len(value) != 8:
+                raise serializers.ValidationError(
+                    "El DNI debe contener 8 dígitos."
+                )
 
-        # 2. Validar unicidad considerando la instancia actual (para actualizaciones)
-        # Excluimos la instancia actual de la búsqueda para permitir guardar si el DNI no cambió
-        queryset = Apoderado.objects.filter(dni=value)
-        if self.instance:
-            queryset = queryset.exclude(pk=self.instance.pk)
-        
-        if queryset.exists():
-            raise serializers.ValidationError("El DNI ya existe.")
-            
         return value
-
-class EstudianteSerializer(serializers.ModelSerializer):
-    aula_nombre = serializers.CharField(source='aula.nombre', read_only=True)
-    apoderado_nombre = serializers.CharField(source='apoderado.nombres', read_only=True)
-    codigo_estudiante = serializers.CharField(read_only=True)
-    generated_credentials = serializers.SerializerMethodField()
-
-    apoderado = ApoderadoSerializer()
+    
+class ApoderadoMiniSerializer(
+    serializers.ModelSerializer
+):
 
     class Meta:
-        model = Estudiante
-        fields = '__all__'
-
-    def get_generated_credentials(self, obj):
-        return getattr(obj, '_generated_credentials', None)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Inyectamos la instancia del apoderado en el serializador anidado.
-        # Esto es crucial para que ApoderadoSerializer sepa que estamos editando
-        # y la validación de DNI único funcione correctamente en actualizaciones.
-        if self.instance and hasattr(self.instance, 'apoderado'):
-            self.fields['apoderado'].instance = self.instance.apoderado
-
-    def update(self, instance, validated_data):
-        apoderado_data = validated_data.pop('apoderado', None)
-
-        if apoderado_data:
-            # Actualizar datos del apoderado
-            apoderado = instance.apoderado
-            for attr, value in apoderado_data.items():
-                setattr(apoderado, attr, value)
-            apoderado.save()
-
-        # Actualizar datos del estudiante
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        return instance
+        model = Apoderado
+        fields = [
+            'id',
+            'nombres',
+            'apellidos',
+            'dni'
+        ]
     
-    def create(self, validated_data):
-        apoderado_data = validated_data.pop('apoderado')
+class ApoderadoRelacionSerializer(
+    serializers.ModelSerializer
+):
 
-        with transaction.atomic():
-            apoderado = Apoderado.objects.create(**apoderado_data)
-            estudiante = Estudiante.objects.create(apoderado=apoderado, **validated_data)
-        return estudiante
-    
-    def validate_dni(self, value):
-        if value:
-            # 1. Validar formato
-            if not value.isdigit() or len(value) != 8:
-                raise serializers.ValidationError("El DNI debe tener 8 dígitos numéricos.")
-            
-            # 2. Validar unicidad
-            queryset = Estudiante.objects.filter(dni=value)
-            if self.instance:
-                queryset = queryset.exclude(pk=self.instance.pk)
-            if queryset.exists():
-                raise serializers.ValidationError("Este DNI ya pertenece a otro estudiante.")
-        return value
-    
-class EstudianteProfileSerializer(serializers.ModelSerializer):
+    apoderado = ApoderadoMiniSerializer()
 
-    aula_nombre = serializers.CharField(
-        source='aula.nombre',
+    class Meta:
+        model = ApoderadoEstudiante
+        fields = [
+            'id',
+            'tipo_relacion',
+            'es_principal',
+            'apoderado'
+        ]
+
+class EstudianteSerializer(
+    serializers.ModelSerializer
+):
+
+
+    codigo_estudiante = serializers.CharField(
         read_only=True
+    )
+
+    apoderados_detail = (
+        ApoderadoRelacionSerializer(
+            source='apoderados',
+            many=True,
+            read_only=True
+        )
     )
 
     class Meta:
@@ -103,21 +74,68 @@ class EstudianteProfileSerializer(serializers.ModelSerializer):
             'id',
             'nombres',
             'apellidos',
+            'fecha_nacimiento',
             'codigo_estudiante',
             'dni',
-            'aula_nombre'
+            'apoderados_detail'
         ]
+    
+class ApoderadoEstudianteSerializer(
+    serializers.ModelSerializer
+):
 
+    apoderado_nombre = serializers.CharField(
+        source='apoderado.nombres',
+        read_only=True
+    )
 
-class ApoderadoProfileSerializer(serializers.ModelSerializer):
-
-    estudiantes = EstudianteProfileSerializer(
-        many=True,
+    estudiante_nombre = serializers.CharField(
+        source='estudiante.nombres',
         read_only=True
     )
 
     class Meta:
+        model = ApoderadoEstudiante
+        fields = [
+            'id',
+            'apoderado',
+            'apoderado_nombre',
+            'estudiante',
+            'estudiante_nombre',
+            'tipo_relacion',
+            'es_principal'
+        ]
+
+    class Meta:
+        model = ApoderadoEstudiante
+        fields = '__all__'
+        
+class HijoSerializer(serializers.ModelSerializer):
+
+    nombre_completo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Estudiante
+
+        fields = [
+            'id',
+            'codigo_estudiante',
+            'dni',
+            'nombre_completo'
+        ]
+
+    def get_nombre_completo(self, obj):
+        return f"{obj.nombres} {obj.apellidos}"
+
+class ApoderadoProfileSerializer(
+    serializers.ModelSerializer
+):
+
+    hijos = serializers.SerializerMethodField()
+
+    class Meta:
         model = Apoderado
+
         fields = [
             'id',
             'nombres',
@@ -126,5 +144,139 @@ class ApoderadoProfileSerializer(serializers.ModelSerializer):
             'email',
             'telefono',
             'direccion',
-            'estudiantes'
+            'hijos'
         ]
+
+    def get_hijos(self, obj):
+
+        relaciones = (
+            ApoderadoEstudiante.objects
+            .select_related('estudiante')
+            .filter(apoderado=obj)
+        )
+
+        return [
+            {
+                "id": r.estudiante.id,
+                "codigo_estudiante":
+                    r.estudiante.codigo_estudiante,
+
+                "nombre":
+                    f"{r.estudiante.nombres} "
+                    f"{r.estudiante.apellidos}",
+
+                "tipo_relacion":
+                    r.tipo_relacion,
+
+                "es_principal":
+                    r.es_principal
+            }
+            for r in relaciones
+        ]
+
+class AgregarApoderadoSerializer(serializers.Serializer):
+
+    dni = serializers.CharField(max_length=8)
+
+    nombres = serializers.CharField(
+        max_length=100,
+        required=False
+    )
+
+    apellidos = serializers.CharField(
+        max_length=100,
+        required=False
+    )
+
+    telefono = serializers.CharField(
+        max_length=20,
+        required=False
+    )
+
+    email = serializers.EmailField(
+        required=False
+    )
+
+    direccion = serializers.CharField(
+        required=False,
+        allow_blank=True
+    )
+
+    tipo_relacion = serializers.ChoiceField(
+        choices=[
+            'PADRE',
+            'MADRE',
+            'TUTOR',
+            'ABUELO',
+            'OTRO'
+        ]
+    )
+
+    es_principal = serializers.BooleanField(
+        default=False
+    ) 
+
+class ApoderadoEstudianteDetalleSerializer(
+    serializers.ModelSerializer
+):
+
+    relacion_id = serializers.IntegerField(
+        source='id',
+        read_only=True
+    )
+
+    apoderado_id = serializers.IntegerField(
+        source='apoderado.id'
+    )
+
+    nombres = serializers.CharField(
+        source='apoderado.nombres'
+    )
+
+    apellidos = serializers.CharField(
+        source='apoderado.apellidos'
+    )
+
+    dni = serializers.CharField(
+        source='apoderado.dni'
+    )
+
+    telefono = serializers.CharField(
+        source='apoderado.telefono'
+    )
+
+    email = serializers.CharField(
+        source='apoderado.email'
+    )
+
+    direccion = serializers.CharField(
+        source='apoderado.direccion'
+    )
+
+    class Meta:
+        model = ApoderadoEstudiante
+
+        fields = [
+            'relacion_id',
+            'apoderado_id',
+            'nombres',
+            'apellidos',
+            'dni',
+            'telefono',
+            'email',
+            'direccion',
+            'tipo_relacion',
+            'es_principal'
+        ]
+        
+class RegistroAlumnoSerializer(serializers.Serializer):
+
+    estudiante = serializers.DictField()
+
+    apoderado = serializers.DictField()
+
+    tipo_relacion = serializers.CharField()
+
+    es_principal = serializers.BooleanField(
+        default=True
+    )

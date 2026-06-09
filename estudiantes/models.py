@@ -1,4 +1,5 @@
 from django.db import models
+from django.db import transaction
 
 class Aula(models.Model):
     nombre = models.CharField(max_length=50)  # 2 años, 3 años...
@@ -20,6 +21,7 @@ class Apoderado(models.Model):
         return self.nombres + " " + self.apellidos
 
 
+
 class Estudiante(models.Model):
     nombres = models.CharField(max_length=100)
     apellidos = models.CharField(max_length=100)
@@ -27,8 +29,7 @@ class Estudiante(models.Model):
     codigo_estudiante = models.CharField(max_length=20, unique=True, null=True, blank=True)
     dni = models.CharField(max_length=8, unique=True, null=True, blank=True)
 
-    aula = models.ForeignKey(Aula, on_delete=models.CASCADE, null=True)
-    apoderado = models.ForeignKey(Apoderado, on_delete=models.CASCADE, related_name='estudiantes')
+    
 
     def save(self, *args, **kwargs):
         # Si el código no ha sido asignado (es una creación nueva)
@@ -47,3 +48,64 @@ class Estudiante(models.Model):
 
     def __str__(self):
         return f"{self.nombres} {self.apellidos}"
+    
+
+class ApoderadoEstudiante(models.Model):
+
+    TIPO_RELACION = [
+        ('PADRE', 'Padre'),
+        ('MADRE', 'Madre'),
+        ('TUTOR', 'Tutor'),
+        ('ABUELO', 'Abuelo'),
+        ('OTRO', 'Otro'),
+    ]
+
+    apoderado = models.ForeignKey(
+        Apoderado,
+        on_delete=models.CASCADE,
+        related_name='hijos'
+    )
+
+    estudiante = models.ForeignKey(
+        Estudiante,
+        on_delete=models.CASCADE,
+        related_name='apoderados'
+    )
+
+    tipo_relacion = models.CharField(
+        max_length=20,
+        choices=TIPO_RELACION
+    )
+
+    es_principal = models.BooleanField(default=False)
+
+    fecha_registro = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = (
+            'apoderado',
+            'estudiante'
+        )
+    
+    def save(self, *args, **kwargs):
+
+        with transaction.atomic():
+
+            if self.es_principal:
+
+                ApoderadoEstudiante.objects.filter(
+                    estudiante=self.estudiante
+                ).exclude(
+                    pk=self.pk
+                ).update(
+                    es_principal=False
+                )
+
+            super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (
+            f"{self.apoderado} - "
+            f"{self.estudiante} "
+            f"({self.tipo_relacion})"
+        )

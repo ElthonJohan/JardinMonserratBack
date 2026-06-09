@@ -30,9 +30,9 @@ class Command(BaseCommand):
         apoderado_group.permissions.set(apoderado_perms)
 
         # Crear usuario master
-        if not Usuario.objects.filter(username='admin@monserrat.com').exists():
+        if not Usuario.objects.filter(username='master').exists():
             master_user = Usuario.objects.create_user(
-                username='admin@monserrat.com',
+                username='master',
                 password='password123',
                 is_staff=True,
                 is_superuser=True

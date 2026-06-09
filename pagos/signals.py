@@ -21,7 +21,7 @@ def generar_cronograma_pagos(sender, instance, created, **kwargs):
     
     try:
         with transaction.atomic():
-            anio_actual = instance.anio
+            anio_actual = instance.periodo_academico.anio
             alumno = instance.alumno
             
             # Verificar si es la primera matrícula del alumno
