@@ -109,6 +109,7 @@ class PagoSerializer(serializers.ModelSerializer):
     asignaciones = PagoAsignacionSerializer(many=True, read_only=True)
     banco_detail = BancoSerializer(source='banco', read_only=True)
     monto_aplicado = serializers.SerializerMethodField()
+    apoderado_nombre = serializers.SerializerMethodField()
     
     class Meta:
         model = Pago
@@ -116,9 +117,21 @@ class PagoSerializer(serializers.ModelSerializer):
             'id', 'alumno', 'alumno_detail', 'caja', 'monto_total_entregado',
             'monto_aplicado', 'fecha_pago', 'metodo_pago', 'numero_operacion', 
             'comprobante_img', 'usuario_creador', 'usuario_validador', 'usuario_detail', 'observaciones', 
-            'asignaciones', 'banco', 'banco_detail', 'estado', 'fecha_aprobacion', 'motivo_rechazo'
+            'asignaciones', 'banco', 'banco_detail', 'estado', 'fecha_aprobacion', 'motivo_rechazo',
+            'apoderado_nombre'
         ]
         read_only_fields = ['id', 'fecha_pago', 'usuario_creador', 'usuario_validador', 'asignaciones', 'monto_aplicado']
+
+    def get_apoderado_nombre(self, obj):
+        relacion = ApoderadoEstudiante.objects.filter(
+            estudiante=obj.alumno,
+            es_principal=True
+        ).select_related('apoderado').first()
+        
+        if not relacion:
+            return None
+            
+        return f"{relacion.apoderado.nombres} {relacion.apoderado.apellidos}"
     
     def validate_numero_operacion(self, value):
         """Valida que numero_operacion sea unico (excepto para Efectivo)"""
@@ -227,7 +240,11 @@ class CajaSerializer(serializers.ModelSerializer):
 
 class RegistrarPagoSerializer(serializers.Serializer):
 
-    deuda_id = serializers.IntegerField()
+    deuda_id = serializers.IntegerField(required=False)
+    deudas_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False
+    )
 
     metodo_pago = serializers.ChoiceField(
         choices=Pago.METODO_PAGO_CHOICES
@@ -243,25 +260,64 @@ class RegistrarPagoSerializer(serializers.Serializer):
         allow_blank=True
     )
 
+    banco = serializers.PrimaryKeyRelatedField(
+        queryset=Banco.objects.all(),
+        required=False,
+        allow_null=True
+    )
+
     comprobante_img = serializers.ImageField()
 
     def validate(self, attrs):
+        deuda_id = attrs.get('deuda_id')
+        deudas_ids = attrs.get('deudas_ids')
+        metodo_pago = attrs.get('metodo_pago')
+        banco = attrs.get('banco')
 
-        try:
-            deuda = Deuda.objects.get(
-                id=attrs['deuda_id']
-            )
-        except Deuda.DoesNotExist:
+        if metodo_pago in ['Transferencia', 'Depósito'] and not banco:
             raise serializers.ValidationError(
-                "La deuda no existe."
+                {"banco": "El banco es obligatorio para transferencias o depósitos."}
             )
 
-        if deuda.estado == 'Pagado':
+        if not deuda_id and not deudas_ids:
             raise serializers.ValidationError(
-                "Esta deuda ya fue cancelada."
+                "Debe proporcionar al menos una deuda (deuda_id o deudas_ids)."
             )
 
-        attrs['deuda'] = deuda  
+        if deudas_ids:
+            # Si recibimos deudas_ids en formato string (ej: desde FormData de javascript: "1,2,3")
+            # En FormData a veces un array se pasa como una lista de strings o una cadena separada por comas.
+            # Pero ListField con child=IntegerField espera enteros.
+            # Veamos si django/drf se encarga de convertirlo o si podemos recibirlo.
+            deudas = Deuda.objects.filter(id__in=deudas_ids)
+            if len(deudas) != len(deudas_ids):
+                raise serializers.ValidationError(
+                    "Una o más deudas no existen."
+                )
+            for d in deudas:
+                if d.estado == 'Pagado':
+                    raise serializers.ValidationError(
+                        f"La deuda {d.id} ya fue cancelada."
+                    )
+            attrs['deudas'] = list(deudas)
+            attrs['deuda'] = deudas[0] if deudas else None
+        else:
+            try:
+                deuda = Deuda.objects.get(
+                    id=deuda_id
+                )
+            except Deuda.DoesNotExist:
+                raise serializers.ValidationError(
+                    "La deuda no existe."
+                )
+
+            if deuda.estado == 'Pagado':
+                raise serializers.ValidationError(
+                    "Esta deuda ya fue cancelada."
+                )
+
+            attrs['deudas'] = [deuda]
+            attrs['deuda'] = deuda
 
         return attrs
     

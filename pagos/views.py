@@ -46,7 +46,7 @@ class DeudaViewSet(viewsets.ModelViewSet):
     filterset_fields = ['alumno', 'estado', 'anio']
     search_fields = ['alumno__nombres', 'alumno__apellidos', 'concepto__nombre']
     ordering_fields = ['fecha_vencimiento', 'monto_total', 'estado', 'anio', 'id']
-    ordering = ['id']
+    ordering = ['-id']
     
     def get_queryset(self):
         """
@@ -195,13 +195,25 @@ class PagoViewSet(viewsets.ModelViewSet):
                     pago.usuario_validador = request.user
                     pago.save()
                     
-                    if pago.usuario_creador:
+                    # Intentar obtener el usuario creador o el usuario del apoderado principal del alumno
+                    usuario_notif = pago.usuario_creador
+                    if not usuario_notif:
+                        from estudiantes.models import ApoderadoEstudiante
+                        relacion = ApoderadoEstudiante.objects.filter(
+                            estudiante=pago.alumno,
+                            es_principal=True
+                        ).select_related('apoderado').first()
+                        if relacion and hasattr(relacion.apoderado, 'usuarios'):
+                            usuario_notif = relacion.apoderado.usuarios.first()
+
+                    if usuario_notif:
                         Notificacion.objects.create(
-                            usuario=pago.usuario_creador,
+                            usuario=usuario_notif,
                             alumno=pago.alumno,
                             titulo="Pago Rechazado",
                             mensaje=f"Tu pago por S/{pago.monto_total_entregado} ha sido rechazado. Motivo: {motivo_rechazo}",
-                            tipo='PAGO_RECHAZADO'
+                            tipo='PAGO_RECHAZADO',
+                            ruta='/intranet/pagos'
                         )
 
                 elif estado_nuevo == 'APROBADO':
@@ -224,17 +236,37 @@ class PagoViewSet(viewsets.ModelViewSet):
                     pago.usuario_validador = request.user
                     pago.save()
                     
+                    # Si el pago fue creado con deuda directa (flujo antiguo) y no tiene asignaciones, crearla
+                    if pago.deuda and not pago.asignaciones.exists():
+                        PagoAsignacion.objects.create(
+                            pago=pago,
+                            deuda=pago.deuda,
+                            monto_aplicado=pago.monto_total_entregado
+                        )
+                    
                     # Actualizar saldo de cada deuda afectada
                     for asignacion in pago.asignaciones.all():
                         asignacion.deuda.actualizar_estado()
                         
-                    if pago.usuario_creador:
+                    # Intentar obtener el usuario creador o el usuario del apoderado principal del alumno
+                    usuario_notif = pago.usuario_creador
+                    if not usuario_notif:
+                        from estudiantes.models import ApoderadoEstudiante
+                        relacion = ApoderadoEstudiante.objects.filter(
+                            estudiante=pago.alumno,
+                            es_principal=True
+                        ).select_related('apoderado').first()
+                        if relacion and hasattr(relacion.apoderado, 'usuarios'):
+                            usuario_notif = relacion.apoderado.usuarios.first()
+
+                    if usuario_notif:
                         Notificacion.objects.create(
-                            usuario=pago.usuario_creador,
+                            usuario=usuario_notif,
                             alumno=pago.alumno,
                             titulo="Pago Aprobado",
                             mensaje=f"Tu pago por S/{pago.monto_total_entregado} ha sido aprobado exitosamente.",
-                            tipo='PAGO_APROBADO'
+                            tipo='PAGO_APROBADO',
+                            ruta='/intranet/pagos'
                         )
 
             return Response({"detail": f"Pago {estado_nuevo.lower()} exitosamente."}, status=status.HTTP_200_OK)
@@ -510,7 +542,7 @@ def parent_payment_dashboard(request):
                 'concepto'
             )
             .order_by(
-                'fecha_vencimiento'
+                'id'
             )
         )
 
@@ -531,6 +563,15 @@ def parent_payment_dashboard(request):
 
         total_familiar += total_alumno
 
+        # Calcular progreso financiero real (monto pagado / monto total de deudas activas)
+        todas_deudas = Deuda.objects.filter(alumno=alumno).exclude(estado='Anulado')
+        total_monto = sum(d.monto_total for d in todas_deudas)
+        total_pagado = sum(d.monto_pagado for d in todas_deudas)
+        
+        porcentaje_progreso = 100.0
+        if total_monto > 0:
+            porcentaje_progreso = float((total_pagado / total_monto) * 100)
+
         alumnos_data.append({
 
             "id":
@@ -545,6 +586,15 @@ def parent_payment_dashboard(request):
 
             "total_pendiente":
                 float(total_alumno),
+                
+            "total_monto":
+                float(total_monto),
+                
+            "total_pagado":
+                float(total_pagado),
+                
+            "porcentaje_progreso":
+                round(porcentaje_progreso, 2),
 
             "deudas":
                 DeudaSerializer(
@@ -604,12 +654,15 @@ class RegistrarPagoParentView(APIView):
             raise_exception=True
         )
 
+        deudas = serializer.validated_data['deudas']
         deuda = serializer.validated_data['deuda']
+        alumno = deudas[0].alumno if deudas else None
 
         pago = Pago.objects.create(
 
-            alumno=deuda.alumno,
+            alumno=alumno,
             deuda=deuda,
+            banco=serializer.validated_data.get('banco'),
             monto_total_entregado=
                 serializer.validated_data['monto'],
 
@@ -629,6 +682,27 @@ class RegistrarPagoParentView(APIView):
             estado='REGISTRADO'
         )
 
+        # Crear asignaciones para las deudas en lote (bulk_create no dispara actualizar_estado,
+        # lo cual es correcto porque el pago está en estado REGISTRADO)
+        monto_disponible = serializer.validated_data['monto']
+        asignaciones = []
+        for d in deudas:
+            if monto_disponible <= 0:
+                break
+            saldo_pendiente = d.saldo_pendiente
+            monto_a_asignar = min(monto_disponible, saldo_pendiente)
+            asignaciones.append(
+                PagoAsignacion(
+                    pago=pago,
+                    deuda=d,
+                    monto_aplicado=monto_a_asignar
+                )
+            )
+            monto_disponible -= monto_a_asignar
+
+        if asignaciones:
+            PagoAsignacion.objects.bulk_create(asignaciones)
+
         admins = Usuario.objects.filter(
             is_staff=True
         )
@@ -639,7 +713,7 @@ class RegistrarPagoParentView(APIView):
 
                 usuario=admin,
 
-                alumno=deuda.alumno,
+                alumno=alumno,
 
                 tipo='PAGO_REGISTRADO',
 
@@ -648,7 +722,7 @@ class RegistrarPagoParentView(APIView):
                 mensaje=(
                     f'Se registró un pago '
                     f'de S/ {pago.monto_total_entregado} '
-                    f'para {deuda.alumno}'
+                    f'para {alumno}'
                 ),
                 ruta='/pagos-pendientes'
             )
