@@ -658,6 +658,24 @@ class RegistrarPagoParentView(APIView):
         deuda = serializer.validated_data['deuda']
         alumno = deudas[0].alumno if deudas else None
 
+        # Validar pagos pendientes para las deudas seleccionadas
+        for deuda_validar in deudas:
+
+            existe_pago_pendiente = PagoAsignacion.objects.filter(
+                deuda=deuda_validar,
+                pago__estado='REGISTRADO'
+            ).exists()
+
+            if existe_pago_pendiente:
+                return Response(
+                    {
+                        "message":
+                            f"La deuda '{deuda_validar.concepto.nombre}' "
+                            f"ya tiene un pago pendiente de validación."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         pago = Pago.objects.create(
 
             alumno=alumno,

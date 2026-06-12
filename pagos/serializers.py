@@ -25,18 +25,27 @@ class DeudaSerializer(serializers.ModelSerializer):
     alumno_detail = EstudianteMiniSerializer(source='alumno', read_only=True)
     concepto_detail = ConceptoPagoSerializer(source='concepto', read_only=True)
     saldo_pendiente = serializers.SerializerMethodField()
+    tiene_pago_pendiente = serializers.SerializerMethodField()
     
     class Meta:
         model = Deuda
         fields = [
-            'id', 'alumno', 'alumno_detail', 'concepto', 'concepto_detail',
-            'detalle_adicional', 'monto_total', 'monto_pagado', 'saldo_pendiente', 'mes', 'anio',
-            'fecha_vencimiento', 'estado'
-        ]
+    'id', 'alumno', 'alumno_detail', 'concepto', 'concepto_detail',
+    'detalle_adicional', 'monto_total', 'monto_pagado',
+    'saldo_pendiente', 'tiene_pago_pendiente',
+    'mes', 'anio',
+    'fecha_vencimiento', 'estado'
+]
         read_only_fields = ['id', 'monto_pagado']
     
     def get_saldo_pendiente(self, obj):
         return obj.saldo_pendiente
+    
+    def get_tiene_pago_pendiente(self, obj):
+        return PagoAsignacion.objects.filter(
+            deuda=obj,
+            pago__estado='REGISTRADO'
+        ).exists()
 
     def validate(self, data):
         concepto = data.get('concepto')
