@@ -724,7 +724,7 @@ class RegistrarPagoParentView(APIView):
                     f'de S/ {pago.monto_total_entregado} '
                     f'para {alumno}'
                 ),
-                ruta='/pagos-pendientes'
+                ruta=f'/pagos?tab=validacion&alumnoId={alumno.id}'
             )
 
         return Response(
