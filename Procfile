@@ -1,0 +1,1 @@
+web: gunicorn jardin_monserrat.wsgi

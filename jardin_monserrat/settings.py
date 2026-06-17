@@ -28,9 +28,9 @@ load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = 'django-insecure-tl!d%76@!j^$q$_wvu_5mwrcpr)rg^+y)f@-ixawdgy814c97('
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 import os
 
@@ -60,6 +60,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -94,11 +95,11 @@ WSGI_APPLICATION = 'jardin_monserrat.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DB_NAME', 'jardinmonserrat'),
-        'USER': os.getenv('DB_USER', 'root'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'Elthon_2026'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '3307'),
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST'),
+        'PORT': os.getenv('DB_PORT'),
         'OPTIONS': {
             'charset': 'utf8mb4',
         }
@@ -141,6 +142,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
