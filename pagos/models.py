@@ -69,7 +69,7 @@ class Deuda(models.Model):
 
     def actualizar_estado(self):
         """Calcula el total pagado basado en las asignaciones y actualiza el estado."""
-        total = self.asignaciones.aggregate(Sum('monto_aplicado'))['monto_aplicado__sum'] or 0
+        total = self.asignaciones.filter(pago__estado='APROBADO').aggregate(Sum('monto_aplicado'))['monto_aplicado__sum'] or 0
         self.monto_pagado = total
         if self.monto_pagado >= self.monto_total:
             self.estado = 'Pagado'
