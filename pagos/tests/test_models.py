@@ -705,7 +705,7 @@ class TestPagoModel:
 
     def test_pago_deposito_requiere_banco_y_numero(self, setup_data):
         """Prueba que Depósito requiera banco y número de operación"""
-        usuario, estudiante, caja, _ = setup_data
+        usuario, estudiante, caja, banco = setup_data
         
         # Probar que falta banco
         pago_sin_banco = Pago(
@@ -726,7 +726,7 @@ class TestPagoModel:
             caja=caja,
             monto_total_entregado=Decimal("100.00"),
             metodo_pago="Depósito",
-            banco=setup_data[3],  # banco
+            banco=banco,
             usuario_creador=usuario
         )
         with pytest.raises(ValidationError) as excinfo:
