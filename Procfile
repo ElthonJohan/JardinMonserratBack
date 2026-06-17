@@ -1,1 +1,1 @@
-web: gunicorn jardin_monserrat.wsgi
+web: gunicorn jardin_monserrat.wsgi:application
