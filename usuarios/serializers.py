@@ -45,7 +45,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Usuario
-        fields = ['id', 'username', 'password', 'groups', 'group_ids', 'apoderado_rel']
+        fields = ['id', 'username', 'password', 'email', 'first_name', 'last_name', 'is_parent', 'first_login', 'groups', 'group_ids', 'apoderado_rel']
 
     def update(self, instance, validated_data):
         groups = validated_data.pop('groups', None)
@@ -72,13 +72,16 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Usuario
-        fields = ['id', 'username', 'password', 'group_ids']
+        fields = ['id', 'username', 'password', 'email', 'first_name', 'last_name', 'group_ids']
 
     def create(self, validated_data):
         groups = validated_data.pop('groups', [])
+        password = validated_data.pop('password')
+        username = validated_data.pop('username')
         user = Usuario.objects.create_user(
-            username=validated_data['username'],
-            password=validated_data['password']
+            username=username,
+            password=password,
+            **validated_data
         )
         if groups:
             user.groups.set(groups)

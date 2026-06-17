@@ -14,12 +14,12 @@ import random
 import string
 
 class AulaViewSet(viewsets.ModelViewSet):
-    queryset = Aula.objects.all()
+    queryset = Aula.objects.all().order_by('id')
     serializer_class = AulaSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
 
 class EstudianteViewSet(viewsets.ModelViewSet):
-    queryset = Estudiante.objects.all()
+    queryset = Estudiante.objects.all().order_by('id')
     serializer_class = EstudianteSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     
@@ -38,11 +38,12 @@ class EstudianteViewSet(viewsets.ModelViewSet):
     
     # Campos permitidos para ordenar (Ej: ?ordering=-fecha_nacimiento)
     ordering_fields = ['nombres', 'apellidos', 'fecha_nacimiento']
+    ordering = '-id'
 
 
 
 class ApoderadoViewSet(viewsets.ModelViewSet):
-    queryset = Apoderado.objects.all()
+    queryset = Apoderado.objects.all().order_by('id')
     serializer_class = ApoderadoSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
 
