@@ -27,10 +27,18 @@ load_dotenv(BASE_DIR / '.env')
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-tl!d%76@!j^$q$_wvu_5mwrcpr)rg^+y)f@-ixawdgy814c97('
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://web-production-7dfc2.up.railway.app",
+]
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = [
+    "web-production-7dfc2.up.railway.app",
+    "localhost",
+    "127.0.0.1",
+]
 
 import os
 
