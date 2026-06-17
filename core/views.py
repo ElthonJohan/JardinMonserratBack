@@ -1,7 +1,7 @@
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from .models import Grado, Seccion, Alumno
 from .serializers import GradoSerializer, SeccionSerializer, AlumnoSerializer
 
@@ -9,7 +9,7 @@ from .serializers import GradoSerializer, SeccionSerializer, AlumnoSerializer
 class GradoViewSet(viewsets.ModelViewSet):
     queryset = Grado.objects.filter(activo=True)
     serializer_class = GradoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nombre', 'nivel']
     ordering_fields = ['orden', 'nombre']
@@ -19,7 +19,7 @@ class GradoViewSet(viewsets.ModelViewSet):
 class SeccionViewSet(viewsets.ModelViewSet):
     queryset = Seccion.objects.filter(activo=True)
     serializer_class = SeccionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nombre']
     ordering_fields = ['nombre']
@@ -29,7 +29,7 @@ class SeccionViewSet(viewsets.ModelViewSet):
 class AlumnoViewSet(viewsets.ModelViewSet):
     queryset = Alumno.objects.all()
     serializer_class = AlumnoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nombres', 'apellidos', 'dni', 'nro_matricula', 'email_apoderado']
     ordering_fields = ['apellidos', 'nombres', 'fecha_creacion', 'estado']

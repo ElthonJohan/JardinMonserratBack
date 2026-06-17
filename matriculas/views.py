@@ -1,7 +1,7 @@
 from rest_framework import viewsets, filters
 from rest_framework.permissions import IsAuthenticated
-from .models import Matricula
-from .serializers import MatriculaSerializer
+from .models import Matricula, PeriodoAcademico
+from .serializers import MatriculaSerializer, PeriodoAcademicoSerializer
 
 
 class MatriculaViewSet(viewsets.ModelViewSet):
@@ -10,8 +10,17 @@ class MatriculaViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
-        'alumno__nombres', 'alumno__apellidos', 'alumno__dni',
-        'grado__nombre', 'seccion__nombre', 'anio'
+        'alumno__nombres', 'alumno__apellidos',
+        'aula__nombre','periodo_academico__nombre', 'periodo_academico__anio'
     ]
-    ordering_fields = ['anio', 'fecha_matricula', 'estado']
-    ordering = ['-anio', '-fecha_matricula']
+    ordering_fields = ['periodo_academico__anio', 'fecha_matricula', 'estado']
+    ordering = ['-periodo_academico__anio', '-fecha_matricula']
+
+class PeriodoAcademicoViewSet(viewsets.ModelViewSet):
+    queryset = PeriodoAcademico.objects.all()
+    serializer_class = PeriodoAcademicoSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nombre', 'anio']
+    ordering_fields = ['anio', 'fecha_inicio']
+    ordering = ['-anio', '-fecha_inicio']
