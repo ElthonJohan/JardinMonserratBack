@@ -119,6 +119,8 @@ class PagoSerializer(serializers.ModelSerializer):
     banco_detail = BancoSerializer(source='banco', read_only=True)
     monto_aplicado = serializers.SerializerMethodField()
     apoderado_nombre = serializers.SerializerMethodField()
+    origen = serializers.SerializerMethodField()
+    usuario_validador_detail = serializers.SerializerMethodField()
     
     class Meta:
         model = Pago
@@ -127,7 +129,8 @@ class PagoSerializer(serializers.ModelSerializer):
             'monto_aplicado', 'fecha_pago', 'metodo_pago', 'numero_operacion', 
             'comprobante_img', 'usuario_creador', 'usuario_validador', 'usuario_detail', 'observaciones', 
             'asignaciones', 'banco', 'banco_detail', 'estado', 'fecha_aprobacion', 'motivo_rechazo',
-            'apoderado_nombre'
+            'apoderado_nombre','origen',
+'usuario_validador_detail'
         ]
         read_only_fields = ['id', 'fecha_pago', 'usuario_creador', 'usuario_validador', 'asignaciones', 'monto_aplicado']
 
@@ -184,6 +187,27 @@ class PagoSerializer(serializers.ModelSerializer):
                     total=Sum('monto_aplicado')
         )['total'] or 0
         return float(total)
+    
+    def get_origen(self, obj):
+
+        if obj.usuario_creador:
+            return "ADMINISTRACION"
+
+        return "APODERADO"
+    
+    def get_usuario_validador_detail(self, obj):
+
+        if not obj.usuario_validador:
+            return None
+
+        return {
+            'id': obj.usuario_validador.id,
+            'username': obj.usuario_validador.username,
+            'nombre': (
+                f"{obj.usuario_validador.first_name} "
+                f"{obj.usuario_validador.last_name}"
+            ).strip()
+        }
 
 
 class PagoAsignacionCreateSerializer(serializers.Serializer):

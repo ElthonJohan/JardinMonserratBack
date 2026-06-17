@@ -546,15 +546,20 @@ def parent_payment_dashboard(request):
             )
         )
 
-        pagos = (
-            Pago.objects
-            .filter(
-                alumno=alumno
-            )
-            .order_by(
-                '-fecha_pago'
-            )[:5]
-        )
+        todos_los_pagos = (
+    Pago.objects
+    .filter(
+        alumno=alumno
+    )
+    .prefetch_related(
+        'asignaciones',
+        'asignaciones__deuda',
+        'asignaciones__deuda__concepto'
+    )
+    .order_by(
+        '-fecha_pago'
+    )
+)
 
         total_alumno = sum(
             d.saldo_pendiente
@@ -604,10 +609,16 @@ def parent_payment_dashboard(request):
 
             "pagos_recientes":
                 PagoSerializer(
-                    pagos,
+                    todos_los_pagos[:5],
                     many=True
-                ).data
-        })
+                ).data,
+
+            "historial_pagos":
+                PagoSerializer(
+                    todos_los_pagos,
+                    many=True
+                ).data,
+                    })
 
     return Response({
 
