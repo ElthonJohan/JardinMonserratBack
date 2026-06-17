@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from .serializers import ApoderadoProfileSerializer, RegistroAlumnoSerializer, AgregarApoderadoSerializer, ApoderadoEstudianteDetalleSerializer
 from .models import ApoderadoEstudiante, Estudiante, Aula, Apoderado
-from .serializers import EstudianteSerializer, AulaSerializer, ApoderadoSerializer
+from .serializers import EstudianteSerializer, ChangePasswordSerializer, AulaSerializer, ApoderadoSerializer,ApoderadoProfileUpdateSerializer
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from usuarios.models import Usuario
@@ -118,7 +118,120 @@ class ParentProfileView(APIView):
         return Response(
             serializer.data
         )
+    
+    def put(self, request):
 
+        user = request.user
+
+        if not user.is_parent:
+
+            return Response(
+                {
+                    "detail":
+                    "No autorizado"
+                },
+                status=403
+            )
+
+        apoderado = getattr(
+            user,
+            "apoderado_rel",
+            None
+        )
+
+        if not apoderado:
+
+            return Response(
+                {
+                    "detail":
+                    "No existe un perfil de apoderado asociado."
+                },
+                status=404
+            )
+
+        serializer = (
+            ApoderadoProfileUpdateSerializer(
+                apoderado,
+                data=request.data,
+                partial=True
+            )
+        )
+
+        if serializer.is_valid():
+
+            serializer.save()
+
+            return Response(
+                {
+                    "message":
+                    "Perfil actualizado correctamente",
+                    "data":
+                    serializer.data
+                }
+            )
+
+        return Response(
+            serializer.errors,
+            status=400
+        )
+
+class ParentChangePasswordView(
+    APIView
+):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def post(
+        self,
+        request
+    ):
+
+        serializer = (
+            ChangePasswordSerializer(
+                data=request.data
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        user = request.user
+
+        current_password = (
+            serializer.validated_data[
+                "current_password"
+            ]
+        )
+
+        if not user.check_password(
+            current_password
+        ):
+
+            return Response(
+                {
+                    "detail":
+                    "La contraseña actual es incorrecta."
+                },
+                status=400
+            )
+
+        user.set_password(
+            serializer.validated_data[
+                "new_password"
+            ]
+        )
+
+        user.save()
+
+        return Response(
+            {
+                "message":
+                "Contraseña actualizada correctamente"
+            }
+        )
 
 class EstudianteApoderadosView(APIView):
 

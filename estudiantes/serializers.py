@@ -174,6 +174,59 @@ class ApoderadoProfileSerializer(
             for r in relaciones
         ]
 
+class ApoderadoProfileUpdateSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+
+        model = Apoderado
+
+        fields = [
+            "nombres",
+            "apellidos",
+            "email",
+            "telefono",
+            "direccion",
+            "dni"
+        ]
+
+        read_only_fields = [
+            "dni"
+        ]
+
+class ChangePasswordSerializer(
+    serializers.Serializer
+):
+
+    current_password = serializers.CharField()
+
+    new_password = serializers.CharField()
+
+    confirm_password = serializers.CharField()
+
+    def validate(self, data):
+
+        if (
+            data["new_password"]
+            !=
+            data["confirm_password"]
+        ):
+
+            raise serializers.ValidationError(
+                "Las contraseñas no coinciden."
+            )
+
+        if len(
+            data["new_password"]
+        ) < 8:
+
+            raise serializers.ValidationError(
+                "La contraseña debe tener al menos 8 caracteres."
+            )
+
+        return data
+
 class AgregarApoderadoSerializer(serializers.Serializer):
 
     dni = serializers.CharField(max_length=8)
