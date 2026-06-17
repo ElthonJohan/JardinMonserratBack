@@ -45,12 +45,12 @@ class PermisoViewSet(viewsets.ViewSet):
         return Response(result)
 
 class RoleViewSet(viewsets.ModelViewSet):
-    queryset = Group.objects.all()
+    queryset = Group.objects.all().order_by('id')
     serializer_class = GroupSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
 
 class UsuarioViewSet(viewsets.ModelViewSet):
-    queryset = Usuario.objects.all()
+    queryset = Usuario.objects.all().order_by('id')
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
 

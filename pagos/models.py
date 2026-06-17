@@ -67,10 +67,25 @@ class Deuda(models.Model):
     def saldo_pendiente(self):
         return self.monto_total - self.monto_pagado
 
-    def actualizar_estado(self):
-        """Calcula el total pagado basado en las asignaciones y actualiza el estado."""
-        total = self.asignaciones.filter(pago__estado='APROBADO').aggregate(Sum('monto_aplicado'))['monto_aplicado__sum'] or 0
-        self.monto_pagado = total
+    def actualizar_estado(self, recalcular_desde_asignaciones=False):
+        """
+        Actualiza el estado de la deuda.
+        
+        Args:
+            recalcular_desde_asignaciones: Si True, calcula monto_pagado desde asignaciones.
+                                        Si False, usa el valor actual de monto_pagado.
+        """
+        # No actualizar si está anulada
+        if self.estado == 'Anulado':
+            return
+        
+        if recalcular_desde_asignaciones:
+            total = self.asignaciones.filter(pago__estado='APROBADO').aggregate(
+                Sum('monto_aplicado')
+            )['monto_aplicado__sum'] or 0
+            self.monto_pagado = total
+        
+        # Actualizar estado basado en monto_pagado
         if self.monto_pagado >= self.monto_total:
             self.estado = 'Pagado'
         elif self.monto_pagado > 0:
@@ -204,7 +219,10 @@ class PagoAsignacion(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         # Al guardar una asignación, notificamos a la deuda para que actualice su saldo y estado
-        self.deuda.actualizar_estado()
+        self.deuda.actualizar_estado(recalcular_desde_asignaciones=True)
+
+    def __str__(self):
+        return f"Asignación de Pago {self.id}"
 
     class Meta:
         verbose_name = 'Asignación de Pago'

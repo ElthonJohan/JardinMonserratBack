@@ -2,27 +2,35 @@ from rest_framework import permissions
 
 class IsDirectora(permissions.BasePermission):
     """
-    Permite acceso solo a usuarias con el rol de 'directora'.
+    Permite acceso solo a usuarias con el rol de 'directora' (Grupo Directora).
     """
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.role == 'directora')
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            request.user.groups.filter(name='Directora').exists()
+        )
 
 
 class IsAdministradoraOrDirectora(permissions.BasePermission):
     """
-    Permite acceso a usuarias con rol 'administradora' o 'directora'.
+    Permite acceso a usuarias con rol 'administradora' o 'directora' (Grupos Administradora o Directora).
     """
     def has_permission(self, request, view):
         return bool(
             request.user and 
             request.user.is_authenticated and 
-            request.user.role in ['administradora', 'directora']
+            request.user.groups.filter(name__in=['Administradora', 'Directora']).exists()
         )
 
 
 class IsApoderado(permissions.BasePermission):
     """
-    Permite acceso solo a usuarios con rol 'apoderado'.
+    Permite acceso solo a usuarios con rol 'apoderado' (Grupo Apoderado).
     """
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.role == 'apoderado')
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            request.user.groups.filter(name='Apoderado').exists()
+        )
