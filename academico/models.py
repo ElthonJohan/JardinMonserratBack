@@ -91,7 +91,7 @@ class Apreciacion(models.Model):
 class AsignacionDocente(models.Model):
     docente = models.ForeignKey('usuarios.Usuario', on_delete=models.RESTRICT, related_name='asignaciones_academicas')
     aula = models.ForeignKey('estudiantes.Aula', on_delete=models.RESTRICT, related_name='asignaciones_docentes')
-    area = models.ForeignKey('academico.Area', on_delete=models.RESTRICT, related_name='asignaciones_docentes')
+    areas = models.ManyToManyField('academico.Area', related_name='asignaciones_docentes')
     periodo_matricula = models.ForeignKey('matriculas.PeriodoAcademico', on_delete=models.RESTRICT, related_name='asignaciones_docentes')
     activo = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -100,7 +100,8 @@ class AsignacionDocente(models.Model):
     class Meta:
         verbose_name = 'Asignación Docente'
         verbose_name_plural = 'Asignaciones Docentes'
-        unique_together = ['docente', 'aula', 'area', 'periodo_matricula']
+        unique_together = ['docente', 'aula', 'periodo_matricula']
 
     def __str__(self):
-        return f"{self.docente} - {self.area} - {self.aula} ({self.periodo_matricula.nombre if self.periodo_matricula else ''})"
+        areas_str = ", ".join([a.nombre for a in self.areas.all()])
+        return f"{self.docente} - Aula: {self.aula} - Áreas: [{areas_str}] ({self.periodo_matricula.nombre if self.periodo_matricula else ''})"

@@ -27,6 +27,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         groups = self.user.groups.all()
         data['role'] = groups[0].name if groups.exists() else None
         
+        # Array of group names
+        data['groups'] = [g.name for g in groups]
+        
         # Array of permission codenames (e.g. 'pagos.add_pago', we split by '.' to return just codename if desired, but user.get_all_permissions() returns 'app_label.codename')
         # We will return just the codename to match frontend expectations: 'add_pago'
         perms = self.user.get_all_permissions()

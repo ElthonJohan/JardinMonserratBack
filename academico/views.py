@@ -67,6 +67,7 @@ class CalificacionViewSet(viewsets.ModelViewSet):
     queryset = Calificacion.objects.all()
     serializer_class = CalificacionSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     filterset_fields = ['alumno', 'periodo_evaluacion', 'competencia']
 
     def perform_create(self, serializer):
@@ -116,7 +117,7 @@ class CalificacionViewSet(viewsets.ModelViewSet):
                 tiene_asignacion = AsignacionDocente.objects.filter(
                     docente=request.user,
                     aula=matricula.aula,
-                    area=competencia.area,
+                    areas=competencia.area,
                     periodo_matricula=matricula.periodo_academico,
                     activo=True
                 ).exists()
@@ -151,6 +152,7 @@ class ApreciacionViewSet(viewsets.ModelViewSet):
     queryset = Apreciacion.objects.all()
     serializer_class = ApreciacionSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     filterset_fields = ['alumno', 'periodo_evaluacion']
 
     def get_queryset(self):
@@ -211,9 +213,9 @@ class AsignacionDocenteViewSet(viewsets.ModelViewSet):
     queryset = AsignacionDocente.objects.all()
     serializer_class = AsignacionDocenteSerializer
     permission_classes = [IsAuthenticated, SoloAdminManejoAsignacion]
-    filterset_fields = ['docente', 'aula', 'area', 'periodo_matricula', 'activo']
+    filterset_fields = ['docente', 'aula', 'areas', 'periodo_matricula', 'activo']
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='mis-cursos')
     def mis_cursos(self, request):
         asignaciones = self.get_queryset().filter(docente=request.user, activo=True)
         serializer = self.get_serializer(asignaciones, many=True)

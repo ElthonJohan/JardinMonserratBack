@@ -39,6 +39,10 @@ class ApreciacionAdmin(admin.ModelAdmin):
 
 @admin.register(AsignacionDocente)
 class AsignacionDocenteAdmin(admin.ModelAdmin):
-    list_display = ('docente', 'aula', 'area', 'periodo_matricula', 'activo', 'created_at')
-    list_filter = ('aula', 'area', 'periodo_matricula', 'activo')
-    search_fields = ('docente__username', 'docente__first_name', 'docente__last_name', 'aula__nombre', 'area__nombre')
+    list_display = ('docente', 'aula', 'get_areas', 'periodo_matricula', 'activo', 'created_at')
+    list_filter = ('aula', 'areas', 'periodo_matricula', 'activo')
+    search_fields = ('docente__username', 'docente__first_name', 'docente__last_name', 'aula__nombre', 'areas__nombre')
+
+    def get_areas(self, obj):
+        return ", ".join([a.nombre for a in obj.areas.all()])
+    get_areas.short_description = 'Áreas'

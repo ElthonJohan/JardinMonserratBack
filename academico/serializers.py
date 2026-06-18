@@ -46,7 +46,8 @@ class ApreciacionSerializer(serializers.ModelSerializer):
 class AsignacionDocenteSerializer(serializers.ModelSerializer):
     docente_nombre = serializers.SerializerMethodField()
     aula_nombre = serializers.ReadOnlyField(source='aula.nombre')
-    area_nombre = serializers.ReadOnlyField(source='area.nombre')
+    areas = serializers.PrimaryKeyRelatedField(queryset=Area.objects.all(), many=True)
+    areas_detalle = AreaSerializer(source='areas', many=True, read_only=True)
     periodo_nombre = serializers.ReadOnlyField(source='periodo_matricula.nombre')
 
     class Meta:
