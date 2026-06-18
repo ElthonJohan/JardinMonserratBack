@@ -67,7 +67,7 @@ class Deuda(models.Model):
     def saldo_pendiente(self):
         return self.monto_total - self.monto_pagado
 
-    def actualizar_estado(self, recalcular_desde_asignaciones=False):
+    def actualizar_estado(self, recalcular_desde_asignaciones=True):
         """
         Actualiza el estado de la deuda.
         
