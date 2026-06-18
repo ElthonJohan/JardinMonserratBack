@@ -2,8 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     PagoViewSet, 
-    AprobarPagoView,
-    RechazarPagoView,
+    # AprobarPagoView,
+    # RechazarPagoView,
     ConceptoPagoViewSet,PagosPendientesView, DeudaViewSet, CajaViewSet, BancoViewSet, parent_payment_dashboard, RegistrarPagoParentView
 )
 
@@ -30,14 +30,14 @@ path(
     name='pagos-pendientes'
 ),
 #aprobar pagos
-path(
-    '<int:pago_id>/aprobar/',
-    AprobarPagoView.as_view(),
-    name='aprobar-pago'
-),
-#rechazar pagos
-path(
-    '<int:pago_id>/rechazar/',
-    RechazarPagoView.as_view(),
-    name='rechazar-pago')
+# path(
+#     '<int:pago_id>/aprobar/',
+#     AprobarPagoView.as_view(),
+#     name='aprobar-pago'
+# ),
+# #rechazar pagos
+# path(
+#     '<int:pago_id>/rechazar/',
+#     RechazarPagoView.as_view(),
+#     name='rechazar-pago')
 ]
