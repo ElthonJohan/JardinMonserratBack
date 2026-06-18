@@ -246,7 +246,9 @@ class PagoViewSet(viewsets.ModelViewSet):
                     
                     # Actualizar saldo de cada deuda afectada
                     for asignacion in pago.asignaciones.all():
-                        asignacion.deuda.actualizar_estado()
+                        asignacion.deuda.actualizar_estado(
+                            recalcular_desde_asignaciones=True
+                        )
                         
                     # Intentar obtener el usuario creador o el usuario del apoderado principal del alumno
                     usuario_notif = pago.usuario_creador
@@ -800,232 +802,237 @@ class PagosPendientesView(APIView):
             serializer.data
         )
         
-class AprobarPagoView(APIView):
+# class AprobarPagoView(APIView):
 
-    permission_classes = [IsAuthenticated]
+#     permission_classes = [IsAuthenticated]
 
-    @transaction.atomic
-    def post(self, request, pago_id):
+#     @transaction.atomic
+#     def post(self, request, pago_id):
 
-        pago = get_object_or_404(
-            Pago.objects.select_related(
-                'alumno',
-                'deuda'
-            ),
-            id=pago_id
-        )
+#         pago = get_object_or_404(
+#             Pago.objects.select_related(
+#                 'alumno',
+#                 'deuda'
+#             ),
+#             id=pago_id
+#         )
 
-        if pago.estado != 'REGISTRADO':
+#         if pago.estado != 'REGISTRADO':
 
-            return Response(
-                {
-                    "message":
-                    "El pago ya fue procesado."
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#             return Response(
+#                 {
+#                     "message":
+#                     "El pago ya fue procesado."
+#                 },
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        if not pago.deuda:
+#         if not pago.deuda:
 
-            return Response(
-                {
-                    "message":
-                    "El pago no tiene deuda asociada."
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#             return Response(
+#                 {
+#                     "message":
+#                     "El pago no tiene deuda asociada."
+#                 },
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        if (
-            pago.monto_total_entregado >
-            pago.deuda.saldo_pendiente
-        ):
+#         if (
+#             pago.monto_total_entregado >
+#             pago.deuda.saldo_pendiente
+#         ):
 
-            return Response(
-                {
-                    "message":
-                    "El monto excede la deuda pendiente."
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#             return Response(
+#                 {
+#                     "message":
+#                     "El monto excede la deuda pendiente."
+#                 },
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        PagoAsignacion.objects.create(
-            pago=pago,
-            deuda=pago.deuda,
-            monto_aplicado=
-                pago.monto_total_entregado
-        )
+#         PagoAsignacion.objects.create(
+#             pago=pago,
+#             deuda=pago.deuda,
+#             monto_aplicado=
+#                 pago.monto_total_entregado
+#         )
 
-        caja = Caja.objects.filter(
-            estado='Abierta'
-        ).first()
+#         caja = Caja.objects.filter(
+#             estado='Abierta'
+#         ).first()
 
-        if not caja:
+#         if not caja:
 
-            return Response(
-                {
-                    "message":
-                    "No existe una caja abierta para registrar el pago."
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#             return Response(
+#                 {
+#                     "message":
+#                     "No existe una caja abierta para registrar el pago."
+#                 },
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        pago.caja = caja
+#         pago.caja = caja
 
-        pago.estado = 'APROBADO'
-        pago.fecha_aprobacion = timezone.now()
-        pago.usuario_validador = request.user
-        pago.save()
+#         pago.estado = 'APROBADO'
+#         pago.fecha_aprobacion = timezone.now()
+#         pago.usuario_validador = request.user
+#         pago.save()
 
-        # Notificación al apoderado
-        relacion = (
-            ApoderadoEstudiante.objects
-            .filter(
-                estudiante=pago.alumno,
-                es_principal=True
-            )
-            .select_related(
-                'apoderado'
-            )
-            .first()
-        )
+#         for asignacion in pago.asignaciones.all():
+#             asignacion.deuda.actualizar_estado(
+#                 recalcular_desde_asignaciones=True
+#             )
 
-        if (
-            relacion and
-            hasattr(relacion.apoderado, 'usuarios')
-        ):
+#         # Notificación al apoderado
+#         relacion = (
+#             ApoderadoEstudiante.objects
+#             .filter(
+#                 estudiante=pago.alumno,
+#                 es_principal=True
+#             )
+#             .select_related(
+#                 'apoderado'
+#             )
+#             .first()
+#         )
 
-            usuario_apoderado = (
-                relacion.apoderado.usuarios.first()
-            )
+#         if (
+#             relacion and
+#             hasattr(relacion.apoderado, 'usuarios')
+#         ):
 
-            if usuario_apoderado:
+#             usuario_apoderado = (
+#                 relacion.apoderado.usuarios.first()
+#             )
 
-                Notificacion.objects.create(
-                    usuario=usuario_apoderado,
-                    alumno=pago.alumno,
-                    tipo='PAGO_APROBADO',
-                    titulo='Pago aprobado',
-                    mensaje=(
-                        f'Su pago de '
-                        f'S/ {pago.monto_total_entregado} '
-                        f'ha sido aprobado.'
-                    ),
-                    ruta='/intranet/pagos'
-                )
+#             if usuario_apoderado:
 
-        return Response(
-            {
-                "message":
-                "Pago aprobado exitosamente."
-            }
-        )
+#                 Notificacion.objects.create(
+#                     usuario=usuario_apoderado,
+#                     alumno=pago.alumno,
+#                     tipo='PAGO_APROBADO',
+#                     titulo='Pago aprobado',
+#                     mensaje=(
+#                         f'Su pago de '
+#                         f'S/ {pago.monto_total_entregado} '
+#                         f'ha sido aprobado.'
+#                     ),
+#                     ruta='/intranet/pagos'
+#                 )
 
-class RechazarPagoView(APIView):
+#         return Response(
+#             {
+#                 "message":
+#                 "Pago aprobado exitosamente."
+#             }
+#         )
 
-    permission_classes = [IsAuthenticated]
+# class RechazarPagoView(APIView):
 
-    @transaction.atomic
-    def post(
-        self,
-        request,
-        pago_id
-    ):
+#     permission_classes = [IsAuthenticated]
 
-        serializer = (
-            RechazarPagoSerializer(
-                data=request.data
-            )
-        )
+#     @transaction.atomic
+#     def post(
+#         self,
+#         request,
+#         pago_id
+#     ):
 
-        serializer.is_valid(
-            raise_exception=True
-        )
+#         serializer = (
+#             RechazarPagoSerializer(
+#                 data=request.data
+#             )
+#         )
 
-        pago = get_object_or_404(
-            Pago.objects.select_related(
-                'alumno'
-            ),
-            id=pago_id
-        )
+#         serializer.is_valid(
+#             raise_exception=True
+#         )
 
-        if pago.estado != 'REGISTRADO':
+#         pago = get_object_or_404(
+#             Pago.objects.select_related(
+#                 'alumno'
+#             ),
+#             id=pago_id
+#         )
 
-            return Response(
-                {
-                    "message":
-                    "El pago ya fue procesado."
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#         if pago.estado != 'REGISTRADO':
 
-        pago.estado = 'RECHAZADO'
+#             return Response(
+#                 {
+#                     "message":
+#                     "El pago ya fue procesado."
+#                 },
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        pago.motivo_rechazo = (
-            serializer.validated_data[
-                'motivo'
-            ]
-        )
+#         pago.estado = 'RECHAZADO'
 
-        pago.usuario_validador = (
-            request.user
-        )
+#         pago.motivo_rechazo = (
+#             serializer.validated_data[
+#                 'motivo'
+#             ]
+#         )
 
-        pago.fecha_aprobacion = (
-            timezone.now()
-        )
+#         pago.usuario_validador = (
+#             request.user
+#         )
 
-        pago.save()
+#         pago.fecha_aprobacion = (
+#             timezone.now()
+#         )
 
-        # Buscar apoderado principal
-        relacion = (
-            ApoderadoEstudiante.objects
-            .filter(
-                estudiante=pago.alumno,
-                es_principal=True
-            )
-            .select_related(
-                'apoderado'
-            )
-            .first()
-        )
+#         pago.save()
 
-        if relacion:
+#         # Buscar apoderado principal
+#         relacion = (
+#             ApoderadoEstudiante.objects
+#             .filter(
+#                 estudiante=pago.alumno,
+#                 es_principal=True
+#             )
+#             .select_related(
+#                 'apoderado'
+#             )
+#             .first()
+#         )
 
-            usuario_apoderado = (
-                relacion.apoderado
-                .usuarios
-                .first()
-            )
+#         if relacion:
 
-            if usuario_apoderado:
+#             usuario_apoderado = (
+#                 relacion.apoderado
+#                 .usuarios
+#                 .first()
+#             )
 
-                Notificacion.objects.create(
+#             if usuario_apoderado:
 
-                    usuario=usuario_apoderado,
+#                 Notificacion.objects.create(
 
-                    alumno=pago.alumno,
+#                     usuario=usuario_apoderado,
 
-                    tipo='PAGO_RECHAZADO',
+#                     alumno=pago.alumno,
 
-                    titulo='Pago rechazado',
+#                     tipo='PAGO_RECHAZADO',
 
-                    mensaje=(
-                        f'Su pago de '
-                        f'S/ {pago.monto_total_entregado} '
-                        f'fue rechazado. '
-                        f'Motivo: '
-                        f'{pago.motivo_rechazo}'
-                    ),
-                    ruta='/intranet/pagos'
-                )
+#                     titulo='Pago rechazado',
 
-        return Response(
-            {
-                "message":
-                "Pago rechazado correctamente."
-            },
-            status=status.HTTP_200_OK
-        )
+#                     mensaje=(
+#                         f'Su pago de '
+#                         f'S/ {pago.monto_total_entregado} '
+#                         f'fue rechazado. '
+#                         f'Motivo: '
+#                         f'{pago.motivo_rechazo}'
+#                     ),
+#                     ruta='/intranet/pagos'
+#                 )
+
+#         return Response(
+#             {
+#                 "message":
+#                 "Pago rechazado correctamente."
+#             },
+#             status=status.HTTP_200_OK
+#         )
         
 # pagos/views.py
 
