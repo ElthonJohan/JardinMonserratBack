@@ -4,6 +4,57 @@ from django.db.models import Sum
 from django.utils import timezone
 from decimal import Decimal
 
+
+class ConfiguracionPago(models.Model):
+
+    nombre_institucion = models.CharField(
+        max_length=150,
+        default="Jardín Nuestra Señora de Montserrat"
+    )
+
+    titular_yape = models.CharField(
+        max_length=150
+    )
+
+    numero_yape = models.CharField(
+        max_length=20
+    )
+
+    qr_yape = models.ImageField(
+        upload_to="configuracion_pagos/",
+        blank=True,
+        null=True
+    )
+
+    titular_plin = models.CharField(
+        max_length=150,
+        blank=True,
+        null=True
+    )
+
+    numero_plin = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True
+    )
+
+    qr_plin = models.ImageField(
+        upload_to="configuracion_pagos/",
+        blank=True,
+        null=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
+
+    class Meta:
+        verbose_name = "Configuración de Pago"
+        verbose_name_plural = "Configuraciones de Pago"
+
+    def __str__(self):
+        return self.nombre_institucion
+
 class ConceptoPago(models.Model):
     TIPO_CHOICES = [
         ('CUOTA_INGRESO', 'Cuota de Ingreso (Único)'),
