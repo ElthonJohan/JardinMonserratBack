@@ -1,10 +1,43 @@
 from rest_framework import serializers
-from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion, Banco
+from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion, Banco, ConfiguracionPago
 from estudiantes.models import Estudiante, ApoderadoEstudiante
 from django.utils import timezone
 from django.db.models import Sum  # Importar esto al inicio del archivo
 
 
+from rest_framework import serializers
+from pagos.models import ConfiguracionPago
+
+class ConfiguracionPagoSerializer(serializers.ModelSerializer):
+
+    qr_yape = serializers.SerializerMethodField()
+    qr_plin = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ConfiguracionPago
+        fields = "__all__"
+
+    def get_qr_yape(self, obj):
+
+        request = self.context.get("request")
+
+        if obj.qr_yape:
+            return request.build_absolute_uri(
+                obj.qr_yape.url
+            )
+
+        return None
+
+    def get_qr_plin(self, obj):
+
+        request = self.context.get("request")
+
+        if obj.qr_plin:
+            return request.build_absolute_uri(
+                obj.qr_plin.url
+            )
+
+        return None
 class EstudianteMiniSerializer(serializers.ModelSerializer):
     """Serializer mínimo para mostrar datos del estudiante"""
     class Meta:

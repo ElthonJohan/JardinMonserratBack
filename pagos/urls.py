@@ -4,7 +4,7 @@ from .views import (
     PagoViewSet, 
     # AprobarPagoView,
     # RechazarPagoView,
-    ConceptoPagoViewSet,PagosPendientesView, DeudaViewSet, CajaViewSet, BancoViewSet, parent_payment_dashboard, RegistrarPagoParentView
+    ConceptoPagoViewSet,PagosPendientesView, DeudaViewSet, CajaViewSet, BancoViewSet, parent_payment_dashboard, RegistrarPagoParentView, ConfiguracionPagoViewSet, ConfiguracionPagoPublicView
 )
 
 router = DefaultRouter()
@@ -13,8 +13,19 @@ router.register(r'deudas', DeudaViewSet, basename='deuda')
 router.register(r'pagos', PagoViewSet, basename='pago')
 router.register(r'cajas', CajaViewSet, basename='caja')
 router.register(r'bancos', BancoViewSet, basename='banco')
+router.register(
+    r'configuracion-pagos',
+    ConfiguracionPagoViewSet,
+    basename='configuracion-pagos'
+)
 
 urlpatterns = [
+
+    path(
+        'configuracion-pagos/publica/',
+        ConfiguracionPagoPublicView.as_view(),
+        name='configuracion-pagos-publica'
+    ),
     path('', include(router.urls)),
     path('parent/pagos/', parent_payment_dashboard, name='parent-payment-dashboard'),
     # pagos/urls.py
@@ -28,7 +39,7 @@ path(
     'pendientes/',
     PagosPendientesView.as_view(),
     name='pagos-pendientes'
-),
+)
 #aprobar pagos
 # path(
 #     '<int:pago_id>/aprobar/',

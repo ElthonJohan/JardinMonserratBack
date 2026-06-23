@@ -1,5 +1,5 @@
 from rest_framework import viewsets, generics
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
@@ -53,6 +53,30 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     queryset = Usuario.objects.all().order_by('id')
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
+
+    def get_permissions(self):
+        if self.action == 'me':
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        user = request.user
+        groups = [g.name for g in user.groups.all()]
+        perms = user.get_all_permissions()
+        permissions = [p.split('.')[1] for p in perms]
+        return Response({
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "groups": groups,
+            "permissions": permissions,
+            "is_staff": user.is_staff,
+            "is_superuser": user.is_superuser,
+            "apoderado_id": user.apoderado_rel.id if getattr(user, 'apoderado_rel', None) else None
+        })
 
 class RegisterView(generics.CreateAPIView):
     queryset = Usuario.objects.all()

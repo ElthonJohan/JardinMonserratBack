@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     'pagos.apps.PagosConfig',
     'reportes',
     'notificaciones',
+    'academico',
 ]
 
 MIDDLEWARE = [
@@ -104,11 +105,11 @@ WSGI_APPLICATION = 'jardin_monserrat.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('MYSQLDATABASE', os.getenv('DB_NAME')),
-        'USER': os.getenv('MYSQLUSER', os.getenv('DB_USER')),
-        'PASSWORD': os.getenv('MYSQLPASSWORD', os.getenv('DB_PASSWORD')),
-        'HOST': os.getenv('MYSQLHOST', os.getenv('DB_HOST')),
-        'PORT': os.getenv('MYSQLPORT', os.getenv('DB_PORT')),
+        'NAME': os.getenv('MYSQLDATABASE') or os.getenv('DB_NAME', 'JardinMonserrat4'),
+        'USER': os.getenv('MYSQLUSER') or os.getenv('DB_USER', 'root'),
+        'PASSWORD': os.getenv('MYSQLPASSWORD') or os.getenv('DB_PASSWORD', 'mypassword02'),
+        'HOST': os.getenv('MYSQLHOST') or os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('MYSQLPORT') or os.getenv('DB_PORT', '3306'),
         'OPTIONS': {
             'charset': 'utf8mb4',
         }

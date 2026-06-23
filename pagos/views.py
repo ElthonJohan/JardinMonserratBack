@@ -7,24 +7,71 @@ from django.utils import timezone
 from django.db.models import Q, Sum, Count
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion, Banco
-from estudiantes.models import Estudiante, ApoderadoEstudiante
+from .models import Pago, ConceptoPago, Deuda, Caja, PagoAsignacion, Banco, ConfiguracionPago
+from estudiantes.models import Estudiante
 from .serializers import (
     PagoSerializer, ConceptoPagoSerializer, DeudaSerializer,
     PagoPendienteSerializer,
-    RechazarPagoSerializer,
-    CajaSerializer, PagoAsignacionSerializer, PagoManualSerializer, RegistrarPagoSerializer, BancoSerializer, RegistrarPagoSerializer
+    CajaSerializer, PagoManualSerializer, RegistrarPagoSerializer, BancoSerializer, RegistrarPagoSerializer, ConfiguracionPagoSerializer
 )
 # pagos/views.py
-
+from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-
+from rest_framework.viewsets import ModelViewSet
 from notificaciones.models import Notificacion
 from usuarios.models import Usuario
 
+
+class ConfiguracionPagoViewSet(
+    ModelViewSet
+
+):
+
+    permission_classes = [IsAuthenticated]
+    queryset = ConfiguracionPago.objects.all()
+
+    serializer_class = (
+        ConfiguracionPagoSerializer
+    )
+
+    def create(self, request, *args, **kwargs):
+
+        if ConfiguracionPago.objects.exists():
+
+            return Response(
+                {
+                    "detail":
+                    "Ya existe una configuración de pago."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return super().create(
+            request,
+            *args,
+            **kwargs
+        )
+
+
+class ConfiguracionPagoPublicView(APIView):
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+
+        config = ConfiguracionPago.objects.first()
+
+        serializer = ConfiguracionPagoSerializer(
+            config,
+            context={
+                "request": request
+            }
+        )
+
+        return Response(serializer.data)
 
 class ConceptoPagoViewSet(viewsets.ModelViewSet):
     """ViewSet para conceptos de pago"""
