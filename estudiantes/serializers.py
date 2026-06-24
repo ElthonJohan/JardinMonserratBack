@@ -148,6 +148,7 @@ class ApoderadoProfileSerializer(
         ]
 
     def get_hijos(self, obj):
+        from matriculas.models import Matricula
 
         relaciones = (
             ApoderadoEstudiante.objects
@@ -155,24 +156,26 @@ class ApoderadoProfileSerializer(
             .filter(apoderado=obj)
         )
 
-        return [
-            {
+        hijos_list = []
+        for r in relaciones:
+            matricula = Matricula.objects.filter(
+                alumno=r.estudiante,
+                estado='Activa'
+            ).select_related('aula', 'periodo_academico').first()
+
+            hijos_list.append({
                 "id": r.estudiante.id,
-                "codigo_estudiante":
-                    r.estudiante.codigo_estudiante,
+                "codigo_estudiante": r.estudiante.codigo_estudiante,
+                "nombre": f"{r.estudiante.nombres} {r.estudiante.apellidos}",
+                "tipo_relacion": r.tipo_relacion,
+                "es_principal": r.es_principal,
+                "aula_id": matricula.aula.id if matricula else None,
+                "aula_nombre": matricula.aula.nombre if matricula else "Sin Aula",
+                "periodo_academico_id": matricula.periodo_academico.id if matricula else None,
+                "periodo_academico_nombre": matricula.periodo_academico.nombre if matricula else "Sin Periodo"
+            })
 
-                "nombre":
-                    f"{r.estudiante.nombres} "
-                    f"{r.estudiante.apellidos}",
-
-                "tipo_relacion":
-                    r.tipo_relacion,
-
-                "es_principal":
-                    r.es_principal
-            }
-            for r in relaciones
-        ]
+        return hijos_list
 
 class ApoderadoProfileUpdateSerializer(
     serializers.ModelSerializer

@@ -50,14 +50,32 @@ class RoleViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
 
 class UsuarioViewSet(viewsets.ModelViewSet):
-    queryset = Usuario.objects.all().order_by('id')
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
 
+    def get_queryset(self):
+        return Usuario.objects.filter(
+            is_parent=False,
+            apoderado_rel__isnull=True
+        ).order_by('id')
+        
     def get_permissions(self):
-        if self.action == 'me':
+        if self.action in ['me', 'docentes']:
             return [IsAuthenticated()]
         return super().get_permissions()
+
+    @action(detail=False, methods=['get'])
+    def docentes(self, request):
+        profesor_group = Group.objects.filter(name__iexact='PROFESOR').first()
+        queryset = Usuario.objects.all().order_by('id')
+
+        if profesor_group:
+            queryset = queryset.filter(groups=profesor_group)
+        else:
+            queryset = queryset.none()
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def me(self, request):

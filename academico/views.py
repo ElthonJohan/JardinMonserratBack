@@ -253,6 +253,25 @@ class LibretaVirtualView(APIView):
                 {"error": "Faltan parámetros alumno_id o periodo_evaluacion_id"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Validación de seguridad: si el usuario es apoderado, solo puede ver a sus hijos
+        if getattr(request.user, 'is_parent', False):
+            from estudiantes.models import ApoderadoEstudiante
+            apoderado = getattr(request.user, 'apoderado_rel', None)
+            if not apoderado:
+                return Response(
+                    {"error": "No existe un perfil de apoderado asociado a su usuario."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            es_hijo = ApoderadoEstudiante.objects.filter(
+                apoderado=apoderado,
+                estudiante_id=alumno_id
+            ).exists()
+            if not es_hijo:
+                return Response(
+                    {"error": "No autorizado. El estudiante consultado no está registrado como su hijo."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         
         alumno = get_object_or_404(Estudiante, id=alumno_id)
         periodo = get_object_or_404(PeriodoEvaluacion, id=periodo_id)
