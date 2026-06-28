@@ -12,6 +12,7 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from usuarios.models import Usuario
 import random
 import string
+from django.utils.crypto import get_random_string
 
 class AulaViewSet(viewsets.ModelViewSet):
     queryset = Aula.objects.all().order_by('id')
@@ -75,6 +76,44 @@ class ApoderadoViewSet(viewsets.ModelViewSet):
             "data": serializer.data
         })
 
+
+
+    @action(detail=True, methods=["post"])
+    def reset_password(self, request, pk=None):
+        """
+        Restablece la contraseña del usuario asociado al apoderado.
+        """
+
+        apoderado = self.get_object()
+
+        usuario = apoderado.usuarios.first()
+
+        if not usuario:
+            return Response(
+                {
+                    "detail": "El apoderado no tiene un usuario asociado."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        password_temporal = get_random_string(
+            length=8,
+            allowed_chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        )
+
+        usuario.set_password(password_temporal)
+        usuario.first_login = True
+        usuario.save()
+
+        return Response(
+            {
+                "message": "Contraseña restablecida correctamente.",
+                "apoderado": f"{apoderado.nombres} {apoderado.apellidos}",
+                "username": usuario.username,
+                "password": password_temporal
+            },
+            status=status.HTTP_200_OK
+        )
 
 
 class ParentProfileView(APIView):
@@ -175,6 +214,7 @@ class ParentProfileView(APIView):
             serializer.errors,
             status=400
         )
+
 
 class ParentChangePasswordView(
     APIView

@@ -52,4 +52,9 @@ urlpatterns = router.urls + [
     "parent/change-password/",
     ParentChangePasswordView.as_view(),
 ),
+#     path(
+#     "apoderados/<int:pk>/reset-password/",
+#     ApoderadoViewSet.as_view({"post": "reset_password"}),
+# ),
+
 ]
