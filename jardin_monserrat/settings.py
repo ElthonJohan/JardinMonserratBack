@@ -29,6 +29,7 @@ SECRET_KEY = 'django-insecure-tl!d%76@!j^$q$_wvu_5mwrcpr)rg^+y)f@-ixawdgy814c97(
 
 CSRF_TRUSTED_ORIGINS = [
     "https://web-production-7dfc2.up.railway.app",
+    "https://api.jardinmonserrat.com",  # <- Añade tu dominio de Railway
 ]
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -36,6 +37,7 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = [
     "web-production-7dfc2.up.railway.app",
+    "api.jardinmonserrat.com",  # <- Añade tu dominio de Railway
     "localhost",
     "127.0.0.1",
 ]
@@ -53,7 +55,9 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'cloudinary_storage',         # <- Añadir aquí
     'django.contrib.staticfiles',
+    'cloudinary',                 # <- Añadir aquí
     'rest_framework',
     'corsheaders',
     'django_filters',
@@ -204,3 +208,13 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 }
+
+
+# Cloudinary Configuration
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
+    'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
+}
+
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
