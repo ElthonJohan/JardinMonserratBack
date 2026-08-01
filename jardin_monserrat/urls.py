@@ -21,7 +21,14 @@ from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenRefreshView
 from usuarios.views import CustomTokenObtainPairView
 
+from django.http import JsonResponse
+
+def health(request):
+    return JsonResponse({"status": "ok"})
+
 urlpatterns = [
+
+    path("", health),
     path('admin/', admin.site.urls),
     
     #usuarios / Authentication
