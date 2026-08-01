@@ -2,6 +2,10 @@ from rest_framework import viewsets, filters, status, serializers
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.response import Response
+from rest_framework.parsers import (
+    MultiPartParser,
+    FormParser
+)
 from django.db import transaction
 from django.utils import timezone
 from django.db.models import Q, Sum, Count
@@ -13,6 +17,14 @@ from .serializers import (
     PagoSerializer, ConceptoPagoSerializer, DeudaSerializer,
     PagoPendienteSerializer,
     CajaSerializer, PagoManualSerializer, RegistrarPagoSerializer, BancoSerializer, RegistrarPagoSerializer, ConfiguracionPagoSerializer
+)
+
+from core.utils.cloudinary import (
+    upload_image,
+    replace_image,
+    CloudinaryUploadException,
+    CloudinaryReplaceException,
+    CloudinaryDeleteException
 )
 # pagos/views.py
 from rest_framework.permissions import AllowAny
@@ -29,6 +41,12 @@ class ConfiguracionPagoViewSet(
     ModelViewSet
 
 ):
+
+    parser_classes = (
+        MultiPartParser,
+        FormParser,
+    )
+
 
     permission_classes = [IsAuthenticated]
     queryset = ConfiguracionPago.objects.all()
@@ -54,6 +72,50 @@ class ConfiguracionPagoViewSet(
             *args,
             **kwargs
         )
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        """Sobrescribe la creación para guardar imágenes en Cloudinary de forma segura."""
+        instance = serializer.save()
+        self._handle_images(instance, self.request)
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        """Sobrescribe la actualización para reemplazar imágenes en Cloudinary de forma segura."""
+        instance = serializer.save()
+        self._handle_images(instance, self.request)
+
+    def _handle_images(self, instance, request):
+        """
+        Lógica reutilizable para subir o reemplazar qr_yape y qr_plin en Cloudinary.
+        Si la subida falla, se propaga el error (y transaction.atomic hará rollback).
+        """
+        updated = False
+        try:
+            if 'qr_yape' in request.FILES:
+                file = request.FILES['qr_yape']
+                if instance.qr_yape_public_id:
+                    res = replace_image(file, instance.qr_yape_public_id, "configuracion_pagos")
+                else:
+                    res = upload_image(file, "configuracion_pagos")
+                instance.qr_yape = res['url']
+                instance.qr_yape_public_id = res['public_id']
+                updated = True
+            
+            if 'qr_plin' in request.FILES:
+                file = request.FILES['qr_plin']
+                if instance.qr_plin_public_id:
+                    res = replace_image(file, instance.qr_plin_public_id, "configuracion_pagos")
+                else:
+                    res = upload_image(file, "configuracion_pagos")
+                instance.qr_plin = res['url']
+                instance.qr_plin_public_id = res['public_id']
+                updated = True
+                
+            if updated:
+                instance.save()
+        except (CloudinaryUploadException, CloudinaryReplaceException) as e:
+            raise serializers.ValidationError({"detail": f"Error procesando imágenes de Cloudinary: {str(e)}"})
 
 
 class ConfiguracionPagoPublicView(APIView):
@@ -117,6 +179,13 @@ class PagoViewSet(viewsets.ModelViewSet):
     ViewSet para pagos con lógica FIFO de abono multinivel.
     Requiere que el usuario tenga una Caja abierta.
     """
+
+    parser_classes = (
+        MultiPartParser,
+        FormParser,
+    )
+
+
     queryset = Pago.objects.all()
     serializer_class = PagoSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -182,9 +251,35 @@ class PagoViewSet(viewsets.ModelViewSet):
                     # Recuperar las asignaciones desde la DB para tener la instancia de deuda correcta
                     for asignacion in pago.asignaciones.all():
                         asignacion.deuda.actualizar_estado()
+                        
+                if 'comprobante_img' in self.request.FILES:
+                    file = self.request.FILES['comprobante_img']
+                    res = upload_image(file, 'vouchers')
+                    pago.comprobante_img = res['url']
+                    pago.comprobante_public_id = res['public_id']
+                    pago.save()
                 
+        except (CloudinaryUploadException, CloudinaryReplaceException) as e:
+            raise serializers.ValidationError({"comprobante_img": f"Error subiendo comprobante: {str(e)}"})
         except Exception as e:
             raise serializers.ValidationError({"detail": str(e)})
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        """Sobrescribe la actualización para manejar el reemplazo de vouchers de forma segura."""
+        pago = serializer.save()
+        if 'comprobante_img' in self.request.FILES:
+            try:
+                file = self.request.FILES['comprobante_img']
+                if pago.comprobante_public_id:
+                    res = replace_image(file, pago.comprobante_public_id, 'vouchers')
+                else:
+                    res = upload_image(file, 'vouchers')
+                pago.comprobante_img = res['url']
+                pago.comprobante_public_id = res['public_id']
+                pago.save()
+            except (CloudinaryUploadException, CloudinaryReplaceException) as e:
+                raise serializers.ValidationError({"comprobante_img": f"Error procesando comprobante: {str(e)}"})
             
     @action(detail=False, methods=['get'])
     def pendientes_aprobacion(self, request):
@@ -736,6 +831,17 @@ class RegistrarPagoParentView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+        comprobante_url = None
+        comprobante_public_id = None
+        if 'comprobante_img' in serializer.validated_data:
+            try:
+                file = serializer.validated_data['comprobante_img']
+                res = upload_image(file, 'vouchers')
+                comprobante_url = res['url']
+                comprobante_public_id = res['public_id']
+            except CloudinaryUploadException as e:
+                raise serializers.ValidationError({"comprobante_img": f"Error subiendo comprobante: {str(e)}"})
+
         pago = Pago.objects.create(
 
             alumno=alumno,
@@ -752,10 +858,8 @@ class RegistrarPagoParentView(APIView):
                     'numero_operacion'
                 ),
 
-            comprobante_img=
-                serializer.validated_data[
-                    'comprobante_img'
-                ],
+            comprobante_img=comprobante_url,
+            comprobante_public_id=comprobante_public_id,
 
             estado='REGISTRADO'
         )

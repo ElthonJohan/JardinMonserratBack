@@ -4,40 +4,28 @@ from estudiantes.models import Estudiante, ApoderadoEstudiante
 from django.utils import timezone
 from django.db.models import Sum  # Importar esto al inicio del archivo
 
+import os
 
+from django.db.models import Sum
 from rest_framework import serializers
 from pagos.models import ConfiguracionPago
 
 class ConfiguracionPagoSerializer(serializers.ModelSerializer):
 
-    qr_yape = serializers.SerializerMethodField()
-    qr_plin = serializers.SerializerMethodField()
+    qr_yape = serializers.URLField(read_only=True)
+    qr_plin = serializers.URLField(read_only=True)
 
     class Meta:
         model = ConfiguracionPago
         fields = "__all__"
 
     def get_qr_yape(self, obj):
-
-        request = self.context.get("request")
-
-        if obj.qr_yape:
-            return request.build_absolute_uri(
-                obj.qr_yape.url
-            )
-
-        return None
+        return obj.qr_yape if obj.qr_yape else None
 
     def get_qr_plin(self, obj):
+        return obj.qr_plin if obj.qr_plin else None
 
-        request = self.context.get("request")
 
-        if obj.qr_plin:
-            return request.build_absolute_uri(
-                obj.qr_plin.url
-            )
-
-        return None
 class EstudianteMiniSerializer(serializers.ModelSerializer):
     """Serializer mínimo para mostrar datos del estudiante"""
     class Meta:
@@ -145,103 +133,215 @@ class BancoSerializer(serializers.ModelSerializer):
 
 
 class PagoSerializer(serializers.ModelSerializer):
-    """Serializer para pagos (cabecera) con validaciones de seguridad"""
-    alumno_detail = EstudianteMiniSerializer(source='alumno', read_only=True)
+    """
+    Serializer para pagos con validaciones y soporte para Cloudinary.
+    """
+
+    alumno_detail = EstudianteMiniSerializer(
+        source="alumno",
+        read_only=True
+    )
+
     usuario_detail = serializers.SerializerMethodField()
-    asignaciones = PagoAsignacionSerializer(many=True, read_only=True)
-    banco_detail = BancoSerializer(source='banco', read_only=True)
-    monto_aplicado = serializers.SerializerMethodField()
-    apoderado_nombre = serializers.SerializerMethodField()
-    origen = serializers.SerializerMethodField()
+
     usuario_validador_detail = serializers.SerializerMethodField()
-    
+
+    asignaciones = PagoAsignacionSerializer(
+        many=True,
+        read_only=True
+    )
+
+    banco_detail = BancoSerializer(
+        source="banco",
+        read_only=True
+    )
+
+    monto_aplicado = serializers.SerializerMethodField()
+
+    apoderado_nombre = serializers.SerializerMethodField()
+
+    origen = serializers.SerializerMethodField()
+
+    # Devuelve siempre la URL de Cloudinary
+    comprobante_img = serializers.SerializerMethodField()
+
     class Meta:
         model = Pago
-        fields = [
-            'id', 'alumno', 'alumno_detail', 'caja', 'monto_total_entregado',
-            'monto_aplicado', 'fecha_pago', 'metodo_pago', 'numero_operacion', 
-            'comprobante_img', 'usuario_creador', 'usuario_validador', 'usuario_detail', 'observaciones', 
-            'asignaciones', 'banco', 'banco_detail', 'estado', 'fecha_aprobacion', 'motivo_rechazo',
-            'apoderado_nombre','origen',
-'usuario_validador_detail'
-        ]
-        read_only_fields = ['id', 'fecha_pago', 'usuario_creador', 'usuario_validador', 'asignaciones', 'monto_aplicado']
 
-    def get_apoderado_nombre(self, obj):
-        relacion = ApoderadoEstudiante.objects.filter(
-            estudiante=obj.alumno,
-            es_principal=True
-        ).select_related('apoderado').first()
-        
-        if not relacion:
-            return None
-            
-        return f"{relacion.apoderado.nombres} {relacion.apoderado.apellidos}"
-    
+        fields = [
+            "id",
+            "alumno",
+            "alumno_detail",
+            "caja",
+            "monto_total_entregado",
+            "monto_aplicado",
+            "fecha_pago",
+            "metodo_pago",
+            "numero_operacion",
+            "comprobante_img",
+            "usuario_creador",
+            "usuario_validador",
+            "usuario_detail",
+            "observaciones",
+            "asignaciones",
+            "banco",
+            "banco_detail",
+            "estado",
+            "fecha_aprobacion",
+            "motivo_rechazo",
+            "apoderado_nombre",
+            "origen",
+            "usuario_validador_detail",
+        ]
+
+        read_only_fields = [
+            "id",
+            "fecha_pago",
+            "usuario_creador",
+            "usuario_validador",
+            "asignaciones",
+            "monto_aplicado",
+        ]
+
+    # ==========================
+    # VALIDACIONES
+    # ==========================
+
     def validate_numero_operacion(self, value):
-        """Valida que numero_operacion sea unico (excepto para Efectivo)"""
-        metodo_pago = self.initial_data.get('metodo_pago')
-        banco = self.initial_data.get('banco')
-        
-        if metodo_pago == 'Efectivo':
+
+        metodo = self.initial_data.get("metodo_pago")
+
+        if metodo == "Efectivo":
             return value
-        
+
         if not value:
             raise serializers.ValidationError(
-                "El numero de operacion es obligatorio para pagos no en efectivo."
+                "El número de operación es obligatorio."
             )
-        
-        # Validacion delegada al clean() del modelo para el unique_together
+
         return value
-    
+
     def validate(self, data):
-        """Validaciones a nivel de objeto"""
-        request = self.context.get('request')
-        
-        if data.get('monto_total_entregado', 0) <= 0:
+
+        if data.get("monto_total_entregado", 0) <= 0:
             raise serializers.ValidationError({
-                'monto_total_entregado': 'El monto debe ser mayor a cero.'
+                "monto_total_entregado":
+                    "El monto debe ser mayor a cero."
             })
-        
+
+        metodo = data.get("metodo_pago")
+
+        comprobante = self.initial_data.get("comprobante_img")
+
+        if metodo != "Efectivo" and not comprobante:
+            raise serializers.ValidationError({
+                "comprobante_img":
+                    "Debe adjuntar el comprobante del pago."
+            })
+
         return data
-    
+
+    def validate_comprobante_img(self, value):
+
+        if not value:
+            return value
+
+        # Máximo 5 MB
+        if value.size > 5 * 1024 * 1024:
+            raise serializers.ValidationError(
+                "El archivo no puede superar los 5 MB."
+            )
+
+        extension = os.path.splitext(value.name)[1].lower()
+
+        permitidas = [
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".pdf",
+        ]
+
+        if extension not in permitidas:
+            raise serializers.ValidationError(
+                "Solo se permiten archivos JPG, JPEG, PNG o PDF."
+            )
+
+        return value
+
+    # ==========================
+    # CAMPOS CALCULADOS
+    # ==========================
+
+    def get_comprobante_img(self, obj):
+
+        return obj.comprobante_img if obj.comprobante_img else None
+
+    def get_apoderado_nombre(self, obj):
+
+        relacion = (
+            ApoderadoEstudiante.objects
+            .filter(
+                estudiante=obj.alumno,
+                es_principal=True
+            )
+            .select_related("apoderado")
+            .first()
+        )
+
+        if not relacion:
+            return None
+
+        return (
+            f"{relacion.apoderado.nombres} "
+            f"{relacion.apoderado.apellidos}"
+        )
+
     def get_usuario_detail(self, obj):
-        if obj.usuario_creador:
-            return {
-                'id': obj.usuario_creador.id,
-                'username': obj.usuario_creador.username,
-                'nombre': f"{obj.usuario_creador.first_name} {obj.usuario_creador.last_name}"
-            }
-        return None
-    
-    def get_monto_aplicado(self, obj):
-        """Suma del monto_aplicado de todas las asignaciones"""
-        total = obj.asignaciones.aggregate(
-                    total=Sum('monto_aplicado')
-        )['total'] or 0
-        return float(total)
-    
-    def get_origen(self, obj):
 
-        if obj.usuario_creador:
-            return "ADMINISTRACION"
+        if not obj.usuario_creador:
+            return None
 
-        return "APODERADO"
-    
+        return {
+            "id": obj.usuario_creador.id,
+            "username": obj.usuario_creador.username,
+            "nombre": (
+                f"{obj.usuario_creador.first_name} "
+                f"{obj.usuario_creador.last_name}"
+            ).strip()
+        }
+
     def get_usuario_validador_detail(self, obj):
 
         if not obj.usuario_validador:
             return None
 
         return {
-            'id': obj.usuario_validador.id,
-            'username': obj.usuario_validador.username,
-            'nombre': (
+            "id": obj.usuario_validador.id,
+            "username": obj.usuario_validador.username,
+            "nombre": (
                 f"{obj.usuario_validador.first_name} "
                 f"{obj.usuario_validador.last_name}"
             ).strip()
         }
 
+    def get_monto_aplicado(self, obj):
+
+        total = (
+            obj.asignaciones.aggregate(
+                total=Sum("monto_aplicado")
+            )["total"]
+            or 0
+        )
+
+        return float(total)
+
+    def get_origen(self, obj):
+
+        return (
+            "ADMINISTRACION"
+            if obj.usuario_creador
+            else "APODERADO"
+        )
 
 class PagoAsignacionCreateSerializer(serializers.Serializer):
     deuda_id = serializers.IntegerField()
@@ -249,6 +349,7 @@ class PagoAsignacionCreateSerializer(serializers.Serializer):
 
 class PagoManualSerializer(serializers.ModelSerializer):
     detalles_pago = PagoAsignacionCreateSerializer(many=True, write_only=True)
+    comprobante_img = serializers.URLField(read_only=True)
     
     class Meta:
         model = Pago
