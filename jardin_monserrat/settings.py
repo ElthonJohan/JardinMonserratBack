@@ -183,6 +183,11 @@ AUTH_USER_MODEL = 'usuarios.Usuario'
 # ]
 CORS_ALLOW_ALL_ORIGINS = True
 
+# CORS_ALLOWED_ORIGINS = [
+#     "https://jardin-monserrat-front.vercel.app",
+#     "https://api.jardinmonserrat.com",
+# ]
+
 
 # REST Framework Configuration
 REST_FRAMEWORK = {
