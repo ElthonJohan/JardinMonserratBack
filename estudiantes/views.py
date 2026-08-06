@@ -767,3 +767,17 @@ class EliminarRelacionApoderadoView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+    @transaction.atomic
+    def patch(self, request, relacion_id):
+        try:
+            relacion = ApoderadoEstudiante.objects.get(pk=relacion_id)
+        except ApoderadoEstudiante.DoesNotExist:
+            return Response({"error": "Relación no encontrada"}, status=status.HTTP_404_NOT_FOUND)
+        
+        tipo_relacion = request.data.get('tipo_relacion')
+        if tipo_relacion:
+            relacion.tipo_relacion = tipo_relacion
+            relacion.save()
+            return Response({"message": "Relación actualizada"}, status=status.HTTP_200_OK)
+        return Response({"error": "No se proporcionó tipo_relacion"}, status=status.HTTP_400_BAD_REQUEST)
