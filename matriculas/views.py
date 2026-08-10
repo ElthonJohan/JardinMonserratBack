@@ -8,6 +8,7 @@ class MatriculaViewSet(viewsets.ModelViewSet):
     queryset = Matricula.objects.all()
     serializer_class = MatriculaSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         'alumno__nombres', 'alumno__apellidos',
@@ -20,6 +21,7 @@ class PeriodoAcademicoViewSet(viewsets.ModelViewSet):
     queryset = PeriodoAcademico.objects.all()
     serializer_class = PeriodoAcademicoSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nombre', 'anio']
     ordering_fields = ['anio', 'fecha_inicio']
