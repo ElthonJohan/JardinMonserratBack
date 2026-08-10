@@ -29,6 +29,7 @@ SECRET_KEY = 'django-insecure-tl!d%76@!j^$q$_wvu_5mwrcpr)rg^+y)f@-ixawdgy814c97(
 
 CSRF_TRUSTED_ORIGINS = [
     "https://web-production-7dfc2.up.railway.app",
+    "https://api.jardinmonserrat.com",  # <- Añade tu dominio de Railway
 ]
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -36,6 +37,7 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = [
     "web-production-7dfc2.up.railway.app",
+    "api.jardinmonserrat.com",  # <- Añade tu dominio de Railway
     "localhost",
     "127.0.0.1",
 ]
@@ -54,6 +56,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'cloudinary',                 # <- Añadir aquí
     'rest_framework',
     'corsheaders',
     'django_filters',
@@ -180,6 +183,11 @@ AUTH_USER_MODEL = 'usuarios.Usuario'
 # ]
 CORS_ALLOW_ALL_ORIGINS = True
 
+# CORS_ALLOWED_ORIGINS = [
+#     "https://jardin-monserrat-front.vercel.app",
+#     "https://api.jardinmonserrat.com",
+# ]
+
 
 # REST Framework Configuration
 REST_FRAMEWORK = {
@@ -204,3 +212,13 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 }
+
+
+# Cloudinary Configuration
+import cloudinary
+
+cloudinary.config(
+    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+    api_key=os.getenv('CLOUDINARY_API_KEY'),
+    api_secret=os.getenv('CLOUDINARY_API_SECRET'),
+)

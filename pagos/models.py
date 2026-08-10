@@ -20,8 +20,14 @@ class ConfiguracionPago(models.Model):
         max_length=20
     )
 
-    qr_yape = models.ImageField(
-        upload_to="configuracion_pagos/",
+    qr_yape = models.URLField(
+        max_length=500,
+        blank=True,
+        null=True
+    )
+
+    qr_yape_public_id = models.CharField(
+        max_length=255,
         blank=True,
         null=True
     )
@@ -38,8 +44,14 @@ class ConfiguracionPago(models.Model):
         null=True
     )
 
-    qr_plin = models.ImageField(
-        upload_to="configuracion_pagos/",
+    qr_plin = models.URLField(
+        max_length=500,
+        blank=True,
+        null=True
+    )
+
+    qr_plin_public_id = models.CharField(
+        max_length=255,
         blank=True,
         null=True
     )
@@ -213,7 +225,8 @@ class Pago(models.Model):
     # Datos Bancarios y Comprobante
     banco = models.ForeignKey(Banco, on_delete=models.PROTECT, null=True, blank=True)
     numero_operacion = models.CharField(max_length=50, blank=True, null=True)
-    comprobante_img = models.ImageField(upload_to='vouchers/', blank=True, null=True)
+    comprobante_img = models.URLField(max_length=500, blank=True, null=True)
+    comprobante_public_id = models.CharField(max_length=255, blank=True, null=True)
     
     # Estados y Flujo de Aprobación
     estado = models.CharField(max_length=20, choices=ESTADO_PAGO_CHOICES, default='REGISTRADO')
