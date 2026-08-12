@@ -9,6 +9,7 @@ from .models import ApoderadoEstudiante, Estudiante, Aula, Apoderado
 from .serializers import EstudianteSerializer, ChangePasswordSerializer, AulaSerializer, ApoderadoSerializer,ApoderadoProfileUpdateSerializer
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from core.permissions import IsAdministradoraOrDirectora
 from usuarios.models import Usuario
 import random
 import string
@@ -80,7 +81,7 @@ class ApoderadoViewSet(viewsets.ModelViewSet):
 
 
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsAdministradoraOrDirectora])
     def reset_password(self, request, pk=None):
         """
         Restablece la contraseña del usuario asociado al apoderado.
