@@ -26,6 +26,7 @@ class DashboardStatsAPIView(APIView):
         # --- 1. KPIs Generales ---
         total_alumnos_activos = Matricula.objects.filter(estado='Activa', periodo_academico__anio=anio_filtro).values('alumno').distinct().count()
         matriculas_anio = Matricula.objects.filter(periodo_academico__anio=anio_filtro).count()
+        total_estudiantes_registrados = Estudiante.objects.count()
 
         deudas_pendientes = Deuda.objects.filter(estado__in=['Pendiente', 'Parcial'])
         pagos_pendientes_cantidad = deudas_pendientes.count()
@@ -73,6 +74,7 @@ class DashboardStatsAPIView(APIView):
         return Response({
             "kpis": {
                 "total_alumnos_activos": total_alumnos_activos,
+                "total_estudiantes_registrados": total_estudiantes_registrados,
                 "matriculas_anio": matriculas_anio,
                 "pagos_pendientes_cantidad": pagos_pendientes_cantidad,
                 "pagos_pendientes_monto": pagos_pendientes_monto,

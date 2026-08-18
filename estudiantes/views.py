@@ -9,6 +9,7 @@ from .models import ApoderadoEstudiante, Estudiante, Aula, Apoderado
 from .serializers import EstudianteSerializer, ChangePasswordSerializer, AulaSerializer, ApoderadoSerializer,ApoderadoProfileUpdateSerializer
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from core.permissions import IsAdministradoraOrDirectora
 from usuarios.models import Usuario
 import random
 import string
@@ -23,6 +24,7 @@ class EstudianteViewSet(viewsets.ModelViewSet):
     queryset = Estudiante.objects.all().order_by('id')
     serializer_class = EstudianteSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    pagination_class = None
     
     # Configuramos los backends de filtrado
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -47,6 +49,7 @@ class ApoderadoViewSet(viewsets.ModelViewSet):
     queryset = Apoderado.objects.all().order_by('id')
     serializer_class = ApoderadoSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    pagination_class = None
 
     @action(detail=False, methods=['get'])
     def buscar(self, request):
@@ -78,7 +81,7 @@ class ApoderadoViewSet(viewsets.ModelViewSet):
 
 
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsAdministradoraOrDirectora])
     def reset_password(self, request, pk=None):
         """
         Restablece la contraseña del usuario asociado al apoderado.
@@ -781,3 +784,100 @@ class EliminarRelacionApoderadoView(APIView):
             relacion.save()
             return Response({"message": "Relación actualizada"}, status=status.HTTP_200_OK)
         return Response({"error": "No se proporcionó tipo_relacion"}, status=status.HTTP_400_BAD_REQUEST)
+
+class ImportacionMasivaAlumnosView(APIView):
+    def post(self, request):
+        datos_excel = request.data
+        if not isinstance(datos_excel, list):
+            return Response(
+                {"error": "Se esperaba una lista de registros en el formato JSON."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        errores = []
+        credenciales_generadas = []
+        creados = 0
+        
+        for index, fila in enumerate(datos_excel):
+            try:
+                with transaction.atomic():
+                    estudiante_data = fila.get('estudiante', {})
+                    apoderado_data = fila.get('apoderado', {})
+                    tipo_relacion = fila.get('tipo_relacion', 'OTRO')
+                    
+                    if not estudiante_data.get('dni'):
+                        raise ValueError("Falta DNI del estudiante")
+                    if not apoderado_data.get('dni'):
+                        raise ValueError("Falta DNI del apoderado")
+
+                    # 1. Gestionar Apoderado
+                    apoderado = Apoderado.objects.filter(dni=apoderado_data['dni']).first()
+                    if not apoderado:
+                        datos_nuevo_apo = apoderado_data.copy()
+                        datos_nuevo_apo.pop('id', None)
+                        if 'email' not in datos_nuevo_apo or not datos_nuevo_apo['email']:
+                            datos_nuevo_apo['email'] = 'sin_email@gmail.com'
+                        apoderado = Apoderado.objects.create(**datos_nuevo_apo)
+                    else:
+                        apoderado.nombres = apoderado_data.get('nombres', apoderado.nombres)
+                        apoderado.apellidos = apoderado_data.get('apellidos', apoderado.apellidos)
+                        apoderado.telefono = apoderado_data.get('telefono', apoderado.telefono)
+                        if apoderado_data.get('email'):
+                            apoderado.email = apoderado_data.get('email')
+                        if apoderado_data.get('direccion'):
+                            apoderado.direccion = apoderado_data.get('direccion')
+                        apoderado.save()
+
+                    # 2. Gestionar Estudiante
+                    dni_estudiante = estudiante_data['dni']
+                    if Estudiante.objects.filter(dni=dni_estudiante).exists():
+                        raise ValueError("Ya existe un estudiante con ese DNI")
+                    
+                    estudiante = Estudiante.objects.create(**estudiante_data)
+
+                    # 3. Crear Relación
+                    relacion_existente = ApoderadoEstudiante.objects.filter(
+                        apoderado=apoderado,
+                        estudiante=estudiante
+                    ).exists()
+
+                    if not relacion_existente:
+                        ApoderadoEstudiante.objects.create(
+                            apoderado=apoderado,
+                            estudiante=estudiante,
+                            tipo_relacion=tipo_relacion,
+                            es_principal=True
+                        )
+
+                    # 4. Generar Credenciales
+                    if not apoderado.usuarios.exists():
+                        temp_password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+                        usuario = Usuario.objects.create(
+                            username=apoderado.dni,
+                            first_name=apoderado.nombres,
+                            last_name=apoderado.apellidos,
+                            email=apoderado.email,
+                            is_parent=True,
+                            first_login=True,
+                            apoderado_rel=apoderado,
+                            is_active=True
+                        )
+                        usuario.set_password(temp_password)
+                        usuario.save()
+
+                        credenciales_generadas.append({
+                            "apoderado": f"{apoderado.nombres} {apoderado.apellidos}",
+                            "estudiante": f"{estudiante.nombres} {estudiante.apellidos}",
+                            "username": usuario.username,
+                            "password": temp_password
+                        })
+                    
+                    creados += 1
+            except Exception as e:
+                errores.append(f"Fila {index + 1} (DNI Estudiante: {fila.get('estudiante', {}).get('dni', 'Desconocido')}): {str(e)}")
+        
+        return Response({
+            "mensaje": f"Se procesaron {creados} registros exitosamente.",
+            "errores": errores,
+            "credenciales": credenciales_generadas
+        }, status=status.HTTP_200_OK if creados > 0 else status.HTTP_400_BAD_REQUEST)

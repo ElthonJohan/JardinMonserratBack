@@ -8,7 +8,8 @@ from .views import (EstudianteViewSet,
     CambiarApoderadoPrincipalView,
     EliminarRelacionApoderadoView,
   ParentProfileView, RegistroAlumnoView,
-  ParentChangePasswordView)
+  ParentChangePasswordView,
+  ImportacionMasivaAlumnosView)
 
 router = DefaultRouter()
 router.register(r'estudiantes', EstudianteViewSet)
@@ -27,6 +28,11 @@ urlpatterns = router.urls + [
     'registro-alumno/',
     RegistroAlumnoView.as_view(),
     name='registro-alumno'
+),
+    path(
+    'importacion-masiva/',
+    ImportacionMasivaAlumnosView.as_view(),
+    name='importacion-masiva'
 ),
     path(
     'estudiantes/<int:estudiante_id>/agregar-apoderado/',

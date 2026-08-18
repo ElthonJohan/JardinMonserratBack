@@ -187,6 +187,62 @@ class TestApoderadoViewSet:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert 'error' in response.data
 
+    def test_reset_password_exito(self, api_client, admin_user, parent_user):
+        """Prueba restablecer contraseña de un apoderado con usuario"""
+        from django.contrib.auth.models import Group
+        group, _ = Group.objects.get_or_create(name='Administradora')
+        admin_user.groups.add(group)
+        
+        api_client.force_authenticate(user=admin_user)
+        
+        user_parent, apoderado = parent_user
+        
+        url = reverse('apoderado-reset-password', args=[apoderado.id])
+        response = api_client.post(url)
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['message'] == "Contraseña restablecida correctamente."
+        assert response.data['apoderado'] == f"{apoderado.nombres} {apoderado.apellidos}"
+        assert response.data['username'] == user_parent.username
+        assert 'password' in response.data
+        
+        # Verificar en base de datos
+        user_parent.refresh_from_db()
+        assert user_parent.first_login is True
+        assert user_parent.check_password(response.data['password']) is True
+
+    def test_reset_password_sin_usuario(self, api_client, admin_user):
+        """Prueba restablecer contraseña de un apoderado que no tiene usuario asociado"""
+        from django.contrib.auth.models import Group
+        group, _ = Group.objects.get_or_create(name='Administradora')
+        admin_user.groups.add(group)
+        
+        api_client.force_authenticate(user=admin_user)
+        
+        apoderado_sin_user = Apoderado.objects.create(
+            nombres="Pedro",
+            apellidos="Pérez",
+            dni="88888888",
+            telefono="999000111",
+            email="pedro@example.com"
+        )
+        
+        url = reverse('apoderado-reset-password', args=[apoderado_sin_user.id])
+        response = api_client.post(url)
+        
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.data['detail'] == "El apoderado no tiene un usuario asociado."
+
+    def test_reset_password_sin_permiso(self, api_client, parent_user):
+        """Prueba que un usuario no autorizado no puede restablecer contraseña"""
+        user_parent, apoderado = parent_user
+        api_client.force_authenticate(user=user_parent)
+        
+        url = reverse('apoderado-reset-password', args=[apoderado.id])
+        response = api_client.post(url)
+        
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
 
 @pytest.mark.django_db
 class TestParentProfileView:
