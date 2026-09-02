@@ -27,7 +27,10 @@ class CalificacionSerializer(serializers.ModelSerializer):
 
     def get_docente_nombre(self, obj):
         if obj.docente_evaluador:
-            return f"{getattr(obj.docente_evaluador, 'nombres', '')} {getattr(obj.docente_evaluador, 'apellidos', '')}".strip()
+            nombres = getattr(obj.docente_evaluador, 'nombres', '') or getattr(obj.docente_evaluador, 'first_name', '')
+            apellidos = getattr(obj.docente_evaluador, 'apellidos', '') or getattr(obj.docente_evaluador, 'last_name', '')
+            full_name = f"{nombres} {apellidos}".strip()
+            return full_name if full_name else obj.docente_evaluador.username
         return ""
 
 class ApreciacionSerializer(serializers.ModelSerializer):
@@ -40,7 +43,10 @@ class ApreciacionSerializer(serializers.ModelSerializer):
 
     def get_docente_nombre(self, obj):
         if obj.docente:
-            return f"{getattr(obj.docente, 'nombres', '')} {getattr(obj.docente, 'apellidos', '')}".strip()
+            nombres = getattr(obj.docente, 'nombres', '') or getattr(obj.docente, 'first_name', '')
+            apellidos = getattr(obj.docente, 'apellidos', '') or getattr(obj.docente, 'last_name', '')
+            full_name = f"{nombres} {apellidos}".strip()
+            return full_name if full_name else obj.docente.username
         return ""
 
 class AsignacionDocenteSerializer(serializers.ModelSerializer):

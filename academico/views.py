@@ -117,14 +117,17 @@ class CalificacionViewSet(viewsets.ModelViewSet):
                 tiene_asignacion = AsignacionDocente.objects.filter(
                     docente=request.user,
                     aula=matricula.aula,
-                    areas=competencia.area,
+                    areas__id=competencia.area.id,
                     periodo_matricula=matricula.periodo_academico,
                     activo=True
                 ).exists()
 
                 if not tiene_asignacion:
+                    qs_all = AsignacionDocente.objects.filter(docente=request.user, aula=matricula.aula, periodo_matricula=matricula.periodo_academico, activo=True)
+                    asigs = [f"id:{a.id} areas:{[ar.id for ar in a.areas.all()]}" for a in qs_all]
+                    debug_msg = f"No autorizado: No tiene una asignación activa para el área '{competencia.area.nombre}' (ID {competencia.area.id}) en el aula del estudiante. docente_id={request.user.id}, aula_id={matricula.aula.id}, periodo={matricula.periodo_academico.id}, asigs_encontradas={asigs}"
                     return Response(
-                        {"error": f"No autorizado: No tiene una asignación activa para el área '{competencia.area.nombre}' en el aula del estudiante."},
+                        {"error": debug_msg},
                         status=status.HTTP_403_FORBIDDEN
                     )
             
@@ -153,7 +156,7 @@ class ApreciacionViewSet(viewsets.ModelViewSet):
     serializer_class = ApreciacionSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
-    filterset_fields = ['alumno', 'periodo_evaluacion']
+    filterset_fields = ['alumno', 'periodo_evaluacion', 'area']
 
     def get_queryset(self):
         queryset = Apreciacion.objects.all()

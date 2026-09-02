@@ -75,6 +75,7 @@ class Calificacion(models.Model):
 class Apreciacion(models.Model):
     comentario = models.TextField()
     alumno = models.ForeignKey('estudiantes.Estudiante', on_delete=models.CASCADE, related_name='apreciaciones')
+    area = models.ForeignKey('academico.Area', on_delete=models.RESTRICT, related_name='apreciaciones')
     periodo_evaluacion = models.ForeignKey(PeriodoEvaluacion, on_delete=models.RESTRICT, related_name='apreciaciones')
     docente = models.ForeignKey('usuarios.Usuario', on_delete=models.RESTRICT, related_name='apreciaciones_registradas')
     fecha_registro = models.DateTimeField(auto_now_add=True)
@@ -83,7 +84,7 @@ class Apreciacion(models.Model):
     class Meta:
         verbose_name = 'Apreciación'
         verbose_name_plural = 'Apreciaciones'
-        unique_together = ['alumno', 'periodo_evaluacion']
+        unique_together = ['alumno', 'periodo_evaluacion', 'area']
 
     def __str__(self):
         return f"Apreciación de {self.alumno} - {self.periodo_evaluacion.nombre}"
